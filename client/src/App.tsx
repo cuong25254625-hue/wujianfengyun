@@ -93,8 +93,10 @@ export default function App() {
           </aside>
         )}
         <section className="table-panel">
-          <PlayerList room={room} session={session} />
-          <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} />
+          <PlayerList room={room} session={session}>
+            {inGame && <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} mode="table" />}
+          </PlayerList>
+          {!inGame && <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} />}
         </section>
         <aside className="right-panel">
           <LogPanel room={room} messages={messages} />

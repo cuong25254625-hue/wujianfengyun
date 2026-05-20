@@ -1,9 +1,10 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import type { RoomView, SessionView } from '@wujian/shared';
 
 interface PlayerListProps {
   room: RoomView | undefined;
   session: SessionView | undefined;
+  children?: ReactNode;
 }
 
 const factionText = (faction: string | undefined) => {
@@ -20,7 +21,7 @@ const aliveText = (state: string | undefined) => {
   return '等待';
 };
 
-export function PlayerList({ room, session }: PlayerListProps) {
+export function PlayerList({ room, session, children }: PlayerListProps) {
   if (!room) return <p className="muted">尚未加入房间</p>;
 
   const total = room.game?.players.length ?? room.seats.length;
@@ -29,9 +30,13 @@ export function PlayerList({ room, session }: PlayerListProps) {
   return (
     <section className="table-arena card">
       <div className="table-center">
-        <h2>{room.game ? `第 ${room.game.roundNumber} 轮` : '等待开局'}</h2>
-        <p>{room.roomId}</p>
-        <p className="muted">发光座位正在行动</p>
+        {children ?? (
+          <>
+            <h2>{room.game ? `第 ${room.game.roundNumber} 轮` : '等待开局'}</h2>
+            <p>{room.roomId}</p>
+            <p className="muted">发光座位正在行动</p>
+          </>
+        )}
       </div>
       <div className="seat-ring" style={{ '--seat-count': total } as CSSProperties}>
         {room.seats.map((seat, index) => {

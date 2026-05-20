@@ -6,6 +6,7 @@ interface GameBoardProps {
   room: RoomView | undefined;
   session: SessionView | undefined;
   onPlayerCommand: (command: PlayerCommand) => void;
+  mode?: 'panel' | 'table';
 }
 
 const factionLabel: Record<Faction, string> = {
@@ -22,7 +23,7 @@ const victoryReasonLabel: Record<'threeTrueInfo' | 'clearField', string> = {
 const hasPrivateInfo = (player: unknown): player is PrivatePlayerView =>
   typeof player === 'object' && player !== null && 'regularSkills' in player && 'faction' in player;
 
-export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
+export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: GameBoardProps) {
   const game = room?.game;
   const me = game?.players.find((player) => player.userId === session?.userId);
   const aliveTargets = useMemo(() => game?.players.filter((player) => player.aliveState === 'alive' && player.playerId !== me?.playerId) ?? [], [game, me]);
@@ -76,24 +77,24 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
   };
 
   const hasProminentAction = pending || (game.phase.phase === 'TransferDeclare' && isMyTurn);
+  const isTableMode = mode === 'table';
 
   return (
-    <section className="card game-card highlight">
+    <section className={`card game-card highlight ${isTableMode ? 'table-control-card' : ''}`}>
       <div className="game-card-header">
         <div>
-          <h2>当前进程</h2>
-          <p className="muted">跟随高亮流程完成本回合操作。</p>
+          <h2>{isTableMode ? `第 ${game.roundNumber} 轮` : '当前进程'}</h2>
+          <p className="muted">{isTableMode ? '在牌桌中央完成当前操作。' : '跟随高亮流程完成本回合操作。'}</p>
         </div>
         <div className="status-strip">
-          <span>第 {game.roundNumber} 轮</span>
           <span>阶段：<strong>{phaseLabel[game.phase.phase]}</strong></span>
           <span>当前：<strong>{activePlayer?.displayName ?? `座位 #${game.activeSeatIndex + 1}`}</strong></span>
           <span>我的身份：<strong>{me.revealedFaction ? factionLabel[me.revealedFaction] : '未知'}</strong></span>
         </div>
       </div>
 
-      <PhaseProgress phase={game.phase.phase} />
-      <SystemHints hints={game.systemHints} />
+      {!isTableMode && <PhaseProgress phase={game.phase.phase} />}
+      <SystemHints hints={game.systemHints} compact={isTableMode} />
 
       {game.winner && (
         <p className="ok win-banner">
@@ -112,13 +113,15 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
         </div>
       )}
 
-      <div className="my-dashboard compact-dashboard">
-        <div className="my-character">
-          {me.characterImageUrl && <img src={me.characterImageUrl} alt={me.characterName ?? '角色'} />}
-          <p>我的角色：<strong>{me.characterName ?? '未分配'}</strong>{me.characterVisibility ? `（${me.characterVisibility === 'hidden' ? '隐藏' : '公开'}）` : ''}</p>
+      {!isTableMode && (
+        <div className="my-dashboard compact-dashboard">
+          <div className="my-character">
+            {me.characterImageUrl && <img src={me.characterImageUrl} alt={me.characterName ?? '角色'} />}
+            <p>我的角色：<strong>{me.characterName ?? '未分配'}</strong>{me.characterVisibility ? `（${me.characterVisibility === 'hidden' ? '隐藏' : '公开'}）` : ''}</p>
+          </div>
+          {hasPrivateInfo(me) && <SkillBook skills={me.ownSkills} />}
         </div>
-        {hasPrivateInfo(me) && <SkillBook skills={me.ownSkills} />}
-      </div>
+      )}
 
       <div className="actions-panel">
         {game.phase.phase === 'VictoryDeclareWindow' && pending && (
@@ -298,11 +301,12 @@ function SkillSelectors({
   );
 }
 
-function SystemHints({ hints }: { hints: NonNullable<RoomView['game']>['systemHints'] }) {
+function SystemHints({ hints, compact = false }: { hints: NonNullable<RoomView['game']>['systemHints']; compact?: boolean }) {
   if (hints.length === 0) return null;
+  const visibleHints = compact ? hints.slice(0, 1) : hints;
   return (
-    <div className="system-hints">
-      {hints.map((hint, index) => (
+    <div className={`system-hints ${compact ? 'compact-system-hints' : ''}`}>
+      {visibleHints.map((hint, index) => (
         <article className={`system-hint ${hint.level}`} key={`${hint.title}-${index}`}>
           <strong>{hint.title}</strong>
           <p>{hint.message}</p>

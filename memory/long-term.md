@@ -49,3 +49,6 @@
 - WebSocket 排障进展：用户已确认 `wujianfengyun-server` 为 `active (running)`，后端监听 `*:8787`，因此问题不在 Node 后端；下一步重点检查生产前端 `client/.env.production` 的 `VITE_WS_URL` 和 Nginx `location /ws` 反代配置。
 - UI 第三轮优化：进入游戏后自动隐藏左侧房间卡片，布局改为“牌桌主区 + 右侧日志”，牌桌使用接近整屏高度；座位卡半径/尺寸/图片/文字改为随视口压缩，减少环形牌桌玩家显示不全的问题。
 - 本轮 UI 验证：`npm run typecheck`、`npm test`（3 个测试文件、19 个测试）、`npm run build` 全部通过。
+- UI 第四轮优化：用户要求当前进程应在桌面画布中操作，并且加入房间等待阶段桌面更大；已将游戏中 `GameBoard` 作为 `PlayerList` 的桌面中心内容渲染，操作按钮/系统提示/当前阶段状态进入牌桌中央，外部不再单独占据牌桌下方空间。
+- 等待/加入房间桌面优化：默认 `table-arena` 高度提升为 `clamp(720px, 76vh, 900px)`，让开局前座位信息也有更大展示区域；游戏内中心操作卡改为 `table-control-card` 紧凑样式，座位半径扩大到 `min(37vw, 43vh, 470px)` 并缩小卡宽，进一步缓解玩家显示不全。
+- 本轮 UI 验证：`npm run typecheck`、`npm test`（3 个测试文件、19 个测试）、`npm run build` 全部通过。
