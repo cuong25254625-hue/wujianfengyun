@@ -45,3 +45,7 @@
 - UI 第二轮优化决策：用户反馈页面元素太多、日志英文多、系统推进不明显；改为以 `GameBoard` 中文流程条 + 系统提示作为主视觉，降低人物技能和技能说明的常驻展示密度。
 - 日志策略决策：不改服务端 publicLog 协议，先在 `client/src/components/LogPanel.tsx` 用客户端字典把 messageKey/params 转为中文自然句，避免显示 `transfer.declared` 和原始 JSON。
 - 本轮 UI 改动：新增流程条、状态条、当前操作高亮卡片、折叠人物技能操作、折叠我的技能、中文连接/房间状态、中文胜利原因和中文日志格式化；验证 `npm run typecheck`、`npm test`、`npm run build` 通过。
+- 部署问题记录：用户反馈前端提示“WebSocket 连接已关闭，请刷新页面或重启后端”。优先排查后端 systemd 是否运行、8787 是否监听、Nginx `/ws` 是否正确代理，以及前端构建时 `VITE_WS_URL` 是否与 IP/域名/HTTPS 访问方式一致。
+- WebSocket 排障进展：用户已确认 `wujianfengyun-server` 为 `active (running)`，后端监听 `*:8787`，因此问题不在 Node 后端；下一步重点检查生产前端 `client/.env.production` 的 `VITE_WS_URL` 和 Nginx `location /ws` 反代配置。
+- UI 第三轮优化：进入游戏后自动隐藏左侧房间卡片，布局改为“牌桌主区 + 右侧日志”，牌桌使用接近整屏高度；座位卡半径/尺寸/图片/文字改为随视口压缩，减少环形牌桌玩家显示不全的问题。
+- 本轮 UI 验证：`npm run typecheck`、`npm test`（3 个测试文件、19 个测试）、`npm run build` 全部通过。

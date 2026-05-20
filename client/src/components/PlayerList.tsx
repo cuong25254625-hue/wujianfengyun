@@ -29,9 +29,9 @@ export function PlayerList({ room, session }: PlayerListProps) {
   return (
     <section className="table-arena card">
       <div className="table-center">
-        <h2>牌桌</h2>
-        <p>{room.game ? `第 ${room.game.roundNumber} 轮` : '等待开局'}</p>
-        <p className="muted">角色牌按座位围成一圈，发光的是当前行动玩家。</p>
+        <h2>{room.game ? `第 ${room.game.roundNumber} 轮` : '等待开局'}</h2>
+        <p>{room.roomId}</p>
+        <p className="muted">发光座位正在行动</p>
       </div>
       <div className="seat-ring" style={{ '--seat-count': total } as CSSProperties}>
         {room.seats.map((seat, index) => {

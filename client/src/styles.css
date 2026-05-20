@@ -22,16 +22,40 @@ main {
   padding: 16px;
 }
 
+.in-game-main {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  padding: 8px 10px 10px;
+}
+
 header {
   margin-bottom: 14px;
+}
+
+.compact-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
 }
 
 header h1 {
   margin-bottom: 4px;
 }
 
+.compact-header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
 header p {
   color: rgba(244, 247, 251, 0.68);
+}
+
+.compact-header p {
+  margin: 0;
+  font-size: 13px;
 }
 
 h1,
@@ -54,6 +78,25 @@ p {
   align-items: start;
 }
 
+.in-game-shell {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+  gap: 10px;
+  height: calc(100vh - 52px);
+  min-height: 760px;
+  align-items: stretch;
+}
+
+.in-game-shell .table-panel {
+  grid-template-rows: minmax(500px, 1fr) auto;
+  min-width: 0;
+  height: 100%;
+}
+
+.in-game-shell .right-panel {
+  min-width: 0;
+  height: 100%;
+}
+
 .left-panel,
 .right-panel,
 .table-panel {
@@ -68,6 +111,10 @@ p {
   padding: 14px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
   backdrop-filter: blur(8px);
+}
+
+.in-game-shell .card {
+  padding: 10px;
 }
 
 .highlight {
@@ -236,6 +283,10 @@ button:disabled {
   padding-right: 4px;
 }
 
+.in-game-shell .log-list {
+  max-height: calc(100vh - 126px);
+}
+
 .log-section {
   display: grid;
   gap: 6px;
@@ -330,6 +381,12 @@ button:disabled {
     radial-gradient(circle at center, rgba(118, 70, 31, 0.92) 0%, rgba(50, 28, 16, 0.92) 42%, rgba(16, 10, 9, 0.95) 100%);
 }
 
+.in-game-shell .table-arena {
+  min-height: 0;
+  height: 100%;
+  overflow: visible;
+}
+
 .table-center {
   position: absolute;
   left: 50%;
@@ -345,6 +402,21 @@ button:disabled {
   background: radial-gradient(circle, rgba(19, 22, 34, 0.9), rgba(10, 9, 12, 0.72));
   border: 1px solid rgba(255, 222, 150, 0.24);
   box-shadow: inset 0 0 28px rgba(255, 197, 92, 0.1), 0 12px 42px rgba(0, 0, 0, 0.35);
+}
+
+.in-game-shell .table-center {
+  width: min(240px, 30%);
+  min-height: 122px;
+  padding: 16px;
+}
+
+.in-game-shell .table-center h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.in-game-shell .table-center p {
+  margin-bottom: 4px;
 }
 
 .seat-ring {
@@ -366,6 +438,12 @@ button:disabled {
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.36);
   overflow: hidden;
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.in-game-shell .seat-card {
+  --seat-radius: min(34vw, 42vh, 430px);
+  width: clamp(128px, 11vw, 168px);
+  min-height: 0;
 }
 
 .seat-card.active-seat {
@@ -394,6 +472,10 @@ button:disabled {
   background: rgba(0, 0, 0, 0.28);
 }
 
+.in-game-shell .seat-card-image {
+  height: clamp(78px, 11vh, 110px);
+}
+
 .seat-card-image img {
   width: 82px;
   height: 110px;
@@ -402,9 +484,20 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.24);
 }
 
+.in-game-shell .seat-card-image img {
+  width: clamp(56px, 5.8vw, 78px);
+  height: clamp(74px, 10vh, 104px);
+}
+
 .seat-card-body {
   padding: 10px;
   font-size: 12px;
+}
+
+.in-game-shell .seat-card-body {
+  padding: 7px 8px;
+  font-size: 11px;
+  line-height: 1.25;
 }
 
 .seat-title,
@@ -420,8 +513,24 @@ button:disabled {
   margin-bottom: 4px;
 }
 
+.in-game-shell .seat-title,
+.in-game-shell .seat-badges {
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.in-game-shell .seat-card-body p {
+  margin-bottom: 2px;
+}
+
 .seat-skills {
   color: #ffd98e;
+}
+
+.in-game-shell .seat-skills {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .table-status {
@@ -507,6 +616,11 @@ button:disabled {
   border-radius: 10px;
 }
 
+.in-game-shell .card-back.large {
+  width: clamp(56px, 5.8vw, 78px);
+  height: clamp(74px, 10vh, 104px);
+}
+
 .compact-details {
   color: rgba(244, 247, 251, 0.84);
 }
@@ -572,6 +686,25 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .in-game-shell {
+    height: auto;
+    min-height: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .in-game-shell .table-panel {
+    height: auto;
+  }
+
+  .in-game-shell .table-arena {
+    height: min(78vh, 760px);
+    min-height: 620px;
+  }
+
+  .in-game-shell .seat-card {
+    --seat-radius: min(35vw, 310px);
+  }
+
   .table-panel {
     order: 1;
   }
@@ -584,7 +717,8 @@ button:disabled {
     order: 3;
   }
 
-  .log-list {
+  .log-list,
+  .in-game-shell .log-list {
     max-height: 320px;
   }
 
@@ -594,12 +728,20 @@ button:disabled {
 }
 
 @media (max-width: 900px) {
-  main {
+  main,
+  .in-game-main {
     padding: 12px;
   }
 
-  .table-arena {
+  .compact-header {
+    display: block;
+  }
+
+  .table-arena,
+  .in-game-shell .table-arena {
+    height: auto;
     min-height: auto;
+    overflow: hidden;
   }
 
   .table-center,
