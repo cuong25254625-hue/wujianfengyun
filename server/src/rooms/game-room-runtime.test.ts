@@ -33,8 +33,13 @@ const getGame = (runtime: GameRoomRuntime) => {
 };
 
 const passFirstPending = (runtime: GameRoomRuntime, userIndex: number, playerId: PlayerId) => {
+  const phase = runtime.room.game?.phase.phase;
   const pending = Object.values(runtime.room.game?.pendingActions ?? {}).find(
-    (action) => action.status === 'open' && action.eligiblePlayerIds.includes(playerId),
+    (action) =>
+      action.status === 'open' &&
+      (action.phase === phase || action.kind === 'regularSkillWindow' || action.kind === 'dyingSkillWindow') &&
+      action.eligiblePlayerIds.includes(playerId) &&
+      !action.responses.some((response) => response.playerId === playerId),
   );
   expect(pending).toBeDefined();
   const result = runtime.handlePlayerCommand(userId(userIndex), {
@@ -106,10 +111,17 @@ const giveInfo = (runtime: GameRoomRuntime, playerName: string, truth: 'true' | 
   }
 };
 
+const passVictoryWindow = (runtime: GameRoomRuntime) => {
+  const activeSeat = runtime.room.game?.turn.activeSeatIndex ?? 0;
+  const activePlayer = playersBySeat(runtime).find((player) => player.seatIndex === activeSeat && player.aliveState === 'alive');
+  if (!activePlayer) throw new Error('active player not found');
+  passFirstPending(runtime, activePlayer.seatIndex, activePlayer.playerId);
+};
+
 const skipToTransfer = (runtime: GameRoomRuntime) => {
   const [p0] = playersBySeat(runtime);
   if (!p0) throw new Error('no players');
-  passFirstPending(runtime, 0, p0.playerId); // victory window → skill
+  passVictoryWindow(runtime); // victory window → skill
   passFirstPending(runtime, 0, p0.playerId); // skill → transfer
   expect(runtime.room.game?.phase.phase).toBe('TransferDeclare');
 };

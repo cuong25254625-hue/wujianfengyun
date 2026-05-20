@@ -4,6 +4,7 @@ import type { RoomView, SessionView } from '../domain/view.js';
 
 export type ClientMessage =
   | { type: 'hello'; displayName?: string }
+  | { type: 'reconnect'; roomId: RoomId; userId: UserId }
   | { type: 'roomCommand'; command: RoomClientCommand }
   | { type: 'playerCommand'; roomId: RoomId; command: PlayerCommand };
 

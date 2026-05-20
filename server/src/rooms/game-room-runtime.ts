@@ -27,6 +27,7 @@ import {
 import { assignMvpCharacters } from '../engine/character-registry.js';
 import { assignIdentities } from '../engine/identity-engine.js';
 import { createEventId, createInfoId, createPendingActionId, createPlayerId } from '../util/id.js';
+import { checkMission, markDeathDelayMissions, checkDeathDelayVictories } from '../engine/mission-engine.js';
 
 export interface JoinRoomInput {
   userId: UserId;
@@ -73,6 +74,20 @@ export class GameRoomRuntime {
     const seat = this.room.seats.find((item) => item.userId === userId);
     if (!seat) return err('room.notJoined', '你还未加入房间');
     seat.ready = ready;
+    this.touch();
+    return ok(undefined);
+  }
+
+  selectCharacter(userId: UserId, characterId: string): DomainResult<void> {
+    if (this.room.status !== 'lobby') return err('room.alreadyStarted', '游戏已经开始，不能再更换角色');
+    const seat = this.room.seats.find((item) => item.userId === userId);
+    if (!seat) return err('room.notJoined', '你还未加入房间');
+    const duplicate = this.room.seats.find((item) => item.userId !== userId && item.characterPreferenceId === characterId);
+    if (duplicate) return err('character.taken', '该角色已被其他玩家预选');
+    const character = assignMvpCharacters(8).find((item) => item.characterId === characterId);
+    if (!character) return err('character.notFound', '角色不存在');
+    seat.characterPreferenceId = character.characterId;
+    seat.ready = false;
     this.touch();
     return ok(undefined);
   }
@@ -172,8 +187,12 @@ export class GameRoomRuntime {
     this.addLog(game, 'action.passed', { player: this.playerName(game, playerId), window: action.kind });
 
     if (action.kind === 'victoryDeclareWindow') {
-      action.status = 'resolved';
       const activePlayerId = this.activePlayer(game).playerId;
+      // 宣胜窗口面向所有存活玩家开放：非当前回合玩家可宣胜或跳过，
+      // 但只有当前回合玩家跳过时才推进到技能阶段，避免旁观式“跳过”抢推进权。
+      if (playerId !== activePlayerId) return ok(game);
+      action.status = 'resolved';
+      this.closeOpenActionsForCurrentPhase(game);
       const nextState = this.enterPhase(game, 'SkillWindow', { type: 'activeTurn', activePlayerId });
       this.openPendingAction(nextState, 'regularSkillWindow', [activePlayerId], { type: 'generic', data: { window: 'skill' } });
       return ok(nextState);
@@ -201,16 +220,32 @@ export class GameRoomRuntime {
   private handleDeclareVictory(
     game: GameState,
     playerId: PlayerId,
-    faction: Extract<Faction, 'red' | 'blue'>,
-    reason: 'threeTrueInfo' | 'clearField',
+    faction: Faction,
+    reason: 'threeTrueInfo' | 'clearField' | 'secretMission',
   ): DomainResult<GameState> {
     if (game.phase.phase !== 'VictoryDeclareWindow') return err('victory.invalidPhase', '只能在宣胜窗口宣胜');
     const player = game.players[playerId];
     if (!player || player.aliveState !== 'alive') return err('victory.notAlive', '只有存活玩家可以宣胜');
-    if (player.faction === 'white') return err('victory.whiteDisabled', 'MVP 暂未开放白方宣胜');
-    if (player.faction !== faction) return err('victory.wrongFaction', '只能宣告自己红/蓝阵营胜利');
+    if (player.faction !== faction) return err('victory.wrongFaction', '只能宣告自己阵营的胜利');
     if (Object.values(game.players).some((item) => item.aliveState === 'dying')) return err('victory.deathFirst', '存在濒死玩家，必须先结算死亡');
 
+    // 白方宣胜：检查机密任务
+    if (faction === 'white') {
+      if (reason !== 'secretMission') return err('victory.whiteNeedsMission', '白方只能通过完成机密任务宣胜');
+      const mission = checkMission(game, playerId);
+      if (!mission.met) return err('victory.missionNotMet', mission.reason);
+      player.missionStatus = 'declared';
+      this.addPrivateLog(game, playerId, 'mission.completed', { player: player.displayName, reason: mission.reason });
+      game.winState = { finished: true, winner: { faction: 'white', declaredByPlayerId: playerId, reason: 'secretMission', missionPlayerId: playerId } };
+      game.status = 'finished';
+      this.room.status = 'finished';
+      this.appendEvent(game, { type: 'VictoryDeclared', playerId, faction: 'white', reason: 'secretMission' });
+      this.appendEvent(game, { type: 'GameFinished', faction: 'white' });
+      this.addLog(game, 'victory.declared', { player: player.displayName, faction: 'white', reason: 'secretMission' });
+      return ok(this.enterPhase(game, 'GameOver', { type: 'victory', candidates: [playerId] }));
+    }
+
+    // 红蓝方宣胜
     if (reason === 'threeTrueInfo' && this.infoCount(game, playerId, 'true') < 3) {
       return err('victory.noThreeTrue', '未满足三张真情报宣胜条件');
     }
@@ -241,7 +276,7 @@ export class GameRoomRuntime {
     const success = effectiveFaction === declaredFaction;
     if (this.hasSkill(target, 'jiu_ji') || target.characterId === 'char_002_liu_jian_ming') {
       this.rememberIdentity(target, playerId, player.faction, 'skill');
-      this.addLog(game, 'character.jiuJiKnown', { player: target.displayName, source: player.displayName });
+      this.addPrivateLog(game, target.playerId, 'character.jiuJiKnown', { player: target.displayName, source: player.displayName });
     }
     if (success) {
       player.knownIdentities.push({ targetPlayerId, faction: effectiveFaction, source: 'probe' });
@@ -251,7 +286,7 @@ export class GameRoomRuntime {
       }
     } else if (this.hasSkill(player, 'tan_jiu') && target.characterVisibility === 'hidden' && target.characterId) {
       player.knownIdentities.push({ targetPlayerId, characterId: target.characterId, source: 'skill' });
-      this.addLog(game, 'character.tanJiu', { player: player.displayName, target: target.displayName });
+      this.addPrivateLog(game, player.playerId, 'character.tanJiu', { player: player.displayName, target: target.displayName });
     }
     this.appendEvent(game, { type: 'ProbeUsed', sourcePlayerId: playerId, targetPlayerId, declaredFaction });
     this.addLog(game, success ? 'probe.success' : 'probe.failed', {
@@ -311,7 +346,7 @@ export class GameRoomRuntime {
     }
     if (target && this.hasSkill(target, 'jiu_ji')) {
       this.rememberIdentity(target, playerId, player.faction, 'skill');
-      this.addLog(game, 'character.jiuJiKnown', { player: target.displayName, source: player.displayName });
+      this.addPrivateLog(game, target.playerId, 'character.jiuJiKnown', { player: target.displayName, source: player.displayName });
     }
     if (transfer.value.lockedByPlayerIds.length > 0) return err('lock.alreadyUsed', '本次传递已经有锁定');
 
@@ -478,9 +513,29 @@ export class GameRoomRuntime {
         killer.regularSkills.probeRemaining += 1;
         if (this.hasSkill(killer, 'guan_fan')) killer.flags.guan_fan_available = true;
         this.appendEvent(game, { type: 'KillRewardGranted', playerId: killer.playerId, reward: 'probe', amount: 1 });
+        // 任务计数器：假情报致死
+        killer.missionCounters['caused_death'] = ((killer.missionCounters['caused_death'] as number) ?? 0) + 1;
+        // 任务计数器：亲手杀死女性角色（杰克）
+        if (player.gender === 'female') {
+          killer.missionCounters['killed_female'] = ((killer.missionCounters['killed_female'] as number) ?? 0) + 1;
+        }
+        // 任务计数器：克隆导致的死亡（绫波丽）
+        if (killer.flags['ke_long_used']) {
+          killer.missionCounters['clone_caused_death'] = ((killer.missionCounters['clone_caused_death'] as number) ?? 0) + 1;
+        }
+        // 任务计数器：被指定目标杀死（C.C）
+        const ccTarget = killer.flags['cc_mission_target'];
+        if (typeof ccTarget === 'string' && ccTarget === playerId) {
+          const ccDead = game.players[playerId];
+          if (ccDead) {
+            ccDead.missionCounters['killed_by_target'] = ((ccDead.missionCounters['killed_by_target'] as number) ?? 0) + 1;
+          }
+        }
       }
     }
     this.addLog(game, 'player.died', { player: player.displayName, faction: player.faction });
+    // 检查死亡延迟任务（秋濑或、绫里千寻等的※标记任务）
+    markDeathDelayMissions(game, playerId);
     const nextDying = this.firstDyingCandidate(game);
     if (nextDying) return this.startDying(game, nextDying, 'falseInfoLimit');
     return this.advanceTurn(game);
@@ -507,6 +562,7 @@ export class GameRoomRuntime {
     this.revealCharacter(game, player);
     this.appendEvent(game, { type: 'CharacterSkillUsed', sourcePlayerId: player.playerId, skillId: 'jie_lu' });
     this.recordPendingAct(game, player.playerId);
+    player.missionCounters['jie_lu_used'] = ((player.missionCounters['jie_lu_used'] as number) ?? 0) + 1;
     if (transfer.declaredTruth === 'true') {
       player.flags.jie_lu_lost = true;
       const infoId = this.addInfo(game, player.playerId, 'true', player.playerId, 'jie_lu');
@@ -550,6 +606,7 @@ export class GameRoomRuntime {
     target.infoIds = mine;
     for (const infoId of mine) game.infoCards[infoId]!.ownerPlayerId = target.playerId;
     for (const infoId of theirs) game.infoCards[infoId]!.ownerPlayerId = player.playerId;
+    player.missionCounters['ni_zhuan_used'] = ((player.missionCounters['ni_zhuan_used'] as number) ?? 0) + 1;
     this.appendEvent(game, { type: 'CharacterSkillUsed', sourcePlayerId: player.playerId, skillId: 'ni_zhuan', targetPlayerId });
     this.addLog(game, 'character.niZhuan', { player: player.displayName, target: target.displayName });
     return ok(this.afterInfoChanged(game));
@@ -655,6 +712,7 @@ export class GameRoomRuntime {
     if (burned < 1) return err('xinSheng.noFalse', '没有假情报可烧毁');
     player.flags.beng_huai_lost = true;
     this.appendEvent(game, { type: 'CharacterSkillLost', playerId: player.playerId, skillId: 'beng_huai' });
+    player.missionCounters['xin_sheng_used'] = ((player.missionCounters['xin_sheng_used'] as number) ?? 0) + 1;
     if (this.infoCount(game, player.playerId, 'false') < player.falseInfoLimit) {
       player.aliveState = 'alive';
       this.addLog(game, 'character.xinShengSaved', { player: player.displayName });
@@ -712,7 +770,23 @@ export class GameRoomRuntime {
       turnSerial: game.turn.turnSerial + 1,
     };
     this.appendEvent(game, { type: 'TurnAdvanced', roundNumber: game.turn.roundNumber, activeSeatIndex: game.turn.activeSeatIndex });
-    this.openPendingAction(game, 'victoryDeclareWindow', [next.playerId], { type: 'victory', candidates: this.victoryCandidateIds(game) });
+    // 检查死亡延迟任务（※标记的死亡宣胜）
+    const deathDelayed = checkDeathDelayVictories(game);
+    if (deathDelayed.length > 0) {
+      const winnerId = deathDelayed[0]!;
+      const winner = game.players[winnerId];
+      if (winner) {
+        game.winState = { finished: true, winner: { faction: 'white', declaredByPlayerId: winnerId, reason: 'secretMission', missionPlayerId: winnerId } };
+        game.status = 'finished';
+        this.room.status = 'finished';
+        this.appendEvent(game, { type: 'VictoryDeclared', playerId: winnerId, faction: 'white', reason: 'secretMission' });
+        this.appendEvent(game, { type: 'GameFinished', faction: 'white' });
+        this.addLog(game, 'victory.declared', { player: winner.displayName, faction: 'white', reason: 'secretMission' });
+        return this.enterPhase(game, 'GameOver', { type: 'victory', candidates: [winnerId] });
+      }
+    }
+    const allAliveIds = Object.values(game.players).filter((player) => player.aliveState === 'alive').map((player) => player.playerId);
+    this.openPendingAction(game, 'victoryDeclareWindow', allAliveIds, { type: 'victory', candidates: this.victoryCandidateIds(game) });
     return this.enterPhase(game, 'VictoryDeclareWindow', { type: 'activeTurn', activePlayerId: next.playerId });
   }
 
@@ -722,8 +796,11 @@ export class GameRoomRuntime {
 
     const config = createDefaultGameConfig(playerCount);
     const factions = assignIdentities(playerCount);
-    const characters = assignMvpCharacters(playerCount);
     const sortedSeats = [...this.room.seats].sort((left, right) => left.seatIndex - right.seatIndex);
+    const characters = assignMvpCharacters(
+      playerCount,
+      sortedSeats.map((seat) => seat.characterPreferenceId).filter((id): id is NonNullable<typeof id> => Boolean(id)),
+    );
     const players = {} as GameState['players'];
     const now = Date.now();
     const events: EventEnvelope<GameEvent>[] = [];
@@ -773,6 +850,8 @@ export class GameRoomRuntime {
         knownIdentities: [],
         flags: {},
         tags: [],
+        missionStatus: 'pending',
+        missionCounters: {},
       };
       players[playerId] = player;
       appendEvent({ type: 'IdentityAssigned', playerId, faction: player.faction }, events.length);
@@ -818,11 +897,13 @@ export class GameRoomRuntime {
       eventQueue: events,
       pendingActions,
       publicLog,
+      privateLogs: {},
       deathQueue: [],
       winState: { finished: false },
       version: events.length,
     };
-    if (activePlayer) this.openPendingAction(state, 'victoryDeclareWindow', [activePlayer], { type: 'victory', candidates: [] });
+    const initAliveIds = Object.values(state.players).filter((player) => player.aliveState === 'alive').map((player) => player.playerId);
+    this.openPendingAction(state, 'victoryDeclareWindow', initAliveIds, { type: 'victory', candidates: [] });
     return state;
   }
 
@@ -870,6 +951,12 @@ export class GameRoomRuntime {
   private addLog(game: GameState, messageKey: string, params: Record<string, string | number | boolean>): void {
     game.publicLog.unshift({ id: `log_${Date.now()}_${game.publicLog.length}`, messageKey, params, createdAt: Date.now() });
     game.publicLog = game.publicLog.slice(0, 80);
+  }
+
+  private addPrivateLog(game: GameState, playerId: PlayerId, messageKey: string, params: Record<string, string | number | boolean>): void {
+    const logs = game.privateLogs[playerId] ?? [];
+    logs.unshift({ id: `prv_${Date.now()}_${logs.length}`, messageKey, params, createdAt: Date.now() });
+    game.privateLogs[playerId] = logs.slice(0, 60);
   }
 
   private activePlayer(game: GameState): Player {
@@ -1009,6 +1096,7 @@ export class GameRoomRuntime {
     this.revealCharacter(game, rei);
     const trueCount = this.infoCount(game, rei.playerId, 'true');
     const falseCount = this.infoCount(game, rei.playerId, 'false');
+    rei.missionCounters['ke_long_used'] = ((rei.missionCounters['ke_long_used'] as number) ?? 0) + 1;
     this.burnInfos(game, interceptPlayerId, interceptor.infoIds.length, rei.playerId, 'ke_long');
     for (let index = 0; index < trueCount; index += 1) this.addInfo(game, interceptPlayerId, 'true', rei.playerId, 'ke_long');
     for (let index = 0; index < falseCount; index += 1) this.addInfo(game, interceptPlayerId, 'false', rei.playerId, 'ke_long');
@@ -1027,9 +1115,13 @@ export class GameRoomRuntime {
   }
 
   private victoryCandidateIds(game: GameState): PlayerId[] {
-    return Object.values(game.players)
+    const redBlue = Object.values(game.players)
       .filter((player) => player.aliveState === 'alive' && player.faction !== 'white' && this.infoCount(game, player.playerId, 'true') >= 3)
       .map((player) => player.playerId);
+    const white = Object.values(game.players)
+      .filter((player) => player.aliveState === 'alive' && player.faction === 'white' && checkMission(game, player.playerId).met)
+      .map((player) => player.playerId);
+    return [...redBlue, ...white];
   }
 
   private requireTransfer(game: GameState, transferId: string): DomainResult<CurrentTransfer> {
@@ -1038,7 +1130,15 @@ export class GameRoomRuntime {
   }
 
   private openActionByKind(game: GameState, kind: PendingAction['kind']): PendingAction | undefined {
-    return Object.values(game.pendingActions).find((action) => action.kind === kind && action.status === 'open');
+    return Object.values(game.pendingActions).find((action) => action.kind === kind && action.status === 'open' && action.phase === game.phase.phase);
+  }
+
+  private closeOpenActionsForCurrentPhase(game: GameState): void {
+    for (const action of Object.values(game.pendingActions)) {
+      if (action.status === 'open' && action.phase === game.phase.phase) {
+        action.status = 'resolved';
+      }
+    }
   }
 
   private recordPendingAct(game: GameState, playerId: PlayerId): void {

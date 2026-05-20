@@ -3,6 +3,7 @@ import type {
   GameState,
   GamePhase,
   Player,
+  PrivateLogEntry,
   PrivatePlayerView,
   PendingAction,
   PublicGameView,
@@ -62,10 +63,13 @@ const buildSystemHints = (state: GameState, viewerUserId?: UserId): SystemHintVi
   const hints: SystemHintView[] = [];
 
   if (state.winState.winner) {
+    const factionName = state.winState.winner.faction === 'red' ? '红方' : state.winState.winner.faction === 'blue' ? '蓝方' : '白方';
+    const isWhite = state.winState.winner.faction === 'white' && state.winState.winner.missionPlayerId;
+    const whiteName = isWhite ? playerName(state, state.winState.winner.missionPlayerId) : '';
     hints.push({
       level: 'success',
       title: '游戏结束',
-      message: `${state.winState.winner.faction === 'red' ? '红方' : '蓝方'}已宣告胜利。`,
+      message: isWhite ? `${whiteName}（白方）通过机密任务宣告胜利。` : `${factionName}已宣告胜利。`,
       relatedPhase: 'GameOver',
     });
     return hints;
@@ -172,6 +176,7 @@ export const toPublicPlayerView = (state: GameState, playerId: string, viewerUse
     faction: player.faction,
     regularSkills: player.regularSkills,
     ownSkills: [...getRegularSkillViews(player.regularSkills), ...characterSkillViews(player)],
+    privateLog: (state.privateLogs as Record<string, PrivateLogEntry[]>)[playerId] ?? [],
   };
 };
 
@@ -209,11 +214,26 @@ export const toPublicGameView = (state: GameState, viewerUserId?: UserId): Publi
 };
 
 export const toRoomView = (room: GameRoom, viewerUserId?: UserId): RoomView => {
+  const characterNameById = new Map(MVP_CHARACTER_POOL.map((character) => [character.characterId, character.name]));
   const view: RoomView = {
     roomId: room.roomId,
     status: room.status,
     ownerUserId: room.ownerUserId,
-    seats: roomToSeatViews(room),
+    seats: roomToSeatViews(room).map((seat) => {
+      const characterPreferenceName = seat.characterPreferenceId ? characterNameById.get(seat.characterPreferenceId) : undefined;
+      return {
+        ...seat,
+        ...(characterPreferenceName ? { characterPreferenceName } : {}),
+      };
+    }),
+    availableCharacters: MVP_CHARACTER_POOL.map((character) => ({
+      characterId: character.characterId,
+      name: character.name,
+      visibility: character.visibility,
+      gender: character.gender,
+      imageUrl: character.imageUrl,
+      skillIds: character.skillIds,
+    })),
   };
 
   if (room.game) {

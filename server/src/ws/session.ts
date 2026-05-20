@@ -3,7 +3,7 @@ import { createSessionId, createUserId } from '../util/id.js';
 
 export class ClientSession {
   readonly sessionId: SessionId;
-  readonly userId: UserId;
+  userId: UserId;
   displayName: string | undefined;
   roomId: RoomId | undefined;
 

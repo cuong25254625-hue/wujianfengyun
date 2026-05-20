@@ -1,4 +1,4 @@
-import type { RoomView, SessionView } from '@wujian/shared';
+import type { CharacterId, RoomView, SessionView } from '@wujian/shared';
 
 interface RoomPanelProps {
   room: RoomView | undefined;
@@ -11,6 +11,7 @@ interface RoomPanelProps {
   onUpdateDisplayName: () => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
+  onSelectCharacter: (characterId: CharacterId) => void;
   onSetReady: (ready: boolean) => void;
   onStartGame: () => void;
 }
@@ -18,6 +19,7 @@ interface RoomPanelProps {
 const connectionLabel: Record<string, string> = {
   connecting: '连接中',
   open: '已连接',
+  reconnecting: '重连中',
   closed: '已断开',
   error: '连接异常',
 };
@@ -57,6 +59,32 @@ export function RoomPanel(props: RoomPanelProps) {
         <div className="room-meta">
           <p>当前房间：<strong>{room.roomId}</strong></p>
           <p>状态：{roomStatusLabel[room.status] ?? room.status}</p>
+          {room.status === 'lobby' && (
+            <div className="character-picker">
+              <h3>预选角色</h3>
+              <p className="muted">可先选一个想玩的角色；若未选择，开局时系统会自动补位。更换角色会自动取消准备。</p>
+              <div className="character-choice-grid">
+                {room.availableCharacters.map((character) => {
+                  const selectedBy = room.seats.find((seat) => seat.characterPreferenceId === character.characterId);
+                  const isMine = mySeat?.characterPreferenceId === character.characterId;
+                  const taken = Boolean(selectedBy && selectedBy.userId !== session?.userId);
+                  return (
+                    <button
+                      className={`character-choice ${isMine ? 'selected' : ''}`}
+                      disabled={taken}
+                      key={character.characterId}
+                      onClick={() => props.onSelectCharacter(character.characterId)}
+                      type="button"
+                    >
+                      <img src={character.imageUrl} alt={character.name} />
+                      <span>{character.name}</span>
+                      <small>{taken ? `${selectedBy?.displayName ?? '其他玩家'}已选` : isMine ? '已选择' : character.visibility === 'hidden' ? '隐藏角色' : '公开角色'}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="actions">
             <button onClick={() => props.onSetReady(!mySeat?.ready)}>{mySeat?.ready ? '取消准备' : '准备'}</button>
             {isOwner && <button onClick={props.onStartGame}>开始游戏</button>}

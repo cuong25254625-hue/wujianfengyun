@@ -1,4 +1,4 @@
-import type { Faction, InfoId, InfoTruth, PlayerId, ReceiveDecision, RoomId } from './types.js';
+import type { CharacterId, Faction, InfoId, InfoTruth, PlayerId, ReceiveDecision, RoomId } from './types.js';
 
 export type PlayerCommand =
   | DeclareTransferCommand
@@ -62,8 +62,8 @@ export interface UseCharacterSkillCommand {
 export interface DeclareVictoryCommand {
   type: 'DeclareVictory';
   playerId: PlayerId;
-  faction: Extract<Faction, 'red' | 'blue'>;
-  reason: 'threeTrueInfo' | 'clearField';
+  faction: Faction;
+  reason: 'threeTrueInfo' | 'clearField' | 'secretMission';
 }
 
 export interface PassPendingActionCommand {
@@ -76,6 +76,7 @@ export type RoomClientCommand =
   | { type: 'CreateRoom'; displayName: string }
   | { type: 'JoinRoom'; roomId: RoomId; displayName: string }
   | { type: 'UpdateDisplayName'; roomId: RoomId; displayName: string }
+  | { type: 'SelectCharacter'; roomId: RoomId; characterId: CharacterId }
   | { type: 'SetReady'; roomId: RoomId; ready: boolean }
   | { type: 'StartGame'; roomId: RoomId }
   | { type: 'GmForceAdvance'; roomId: RoomId };

@@ -1,12 +1,14 @@
-import type { RoomView } from '@wujian/shared';
+import type { PrivatePlayerView, RoomView, SessionView } from '@wujian/shared';
 
 interface LogPanelProps {
   room: RoomView | undefined;
+  session: SessionView | undefined;
   messages: string[];
 }
 
 type LogParams = Record<string, string | number | boolean>;
 type PublicLogEntry = NonNullable<RoomView['game']>['publicLog'][number];
+type PrivateLogEntry = { id: string; messageKey: string; params: Record<string, string | number | boolean>; createdAt: number };
 
 const factionText: Record<string, string> = {
   red: '红方',
@@ -27,6 +29,7 @@ const decisionText: Record<string, string> = {
 const reasonText: Record<string, string> = {
   threeTrueInfo: '三张真情报',
   clearField: '清场',
+  secretMission: '完成机密任务',
   falseInfoLimit: '假情报达到上限',
 };
 
@@ -80,6 +83,7 @@ const logTemplates: Record<string, string> = {
   'character.bengHuai': '{player} 发动崩坏，令 {target} 获得一张假情报。',
   'character.zhenXiang': '{player} 因真相获得一次额外试探。',
   'character.keLong': '{player} 发动克隆，同步 {target} 的情报数量。',
+  'mission.completed': '机密任务条件确认：{reason}。',
 };
 
 const importantKeys = new Set([
@@ -90,6 +94,7 @@ const importantKeys = new Set([
   'character.xinShengSaved',
   'character.jiuJiReturn',
   'character.bengHuai',
+  'mission.completed',
 ]);
 
 function formatPublicLog(entry: PublicLogEntry): string {
@@ -108,8 +113,13 @@ function formatClientMessage(message: string): string {
   return message;
 }
 
-export function LogPanel({ room, messages }: LogPanelProps) {
+const hasPrivateInfo = (player: unknown): player is PrivatePlayerView =>
+  typeof player === 'object' && player !== null && 'privateLog' in player;
+
+export function LogPanel({ room, session, messages }: LogPanelProps) {
   const publicLogs = room?.game?.publicLog.slice(0, 30) ?? [];
+  const me = room?.game?.players.find((player) => player.userId === session?.userId);
+  const privateLog = (me && hasPrivateInfo(me) ? me.privateLog : []) as PrivateLogEntry[];
   const clientMessages = messages.slice(0, 12).map(formatClientMessage);
 
   return (
@@ -121,6 +131,16 @@ export function LogPanel({ room, messages }: LogPanelProps) {
             <h3>连接提示</h3>
             {clientMessages.map((message, index) => (
               <div className="log-entry client-log" key={`${message}-${index}`}>{message}</div>
+            ))}
+          </section>
+        )}
+        {privateLog.length > 0 && (
+          <section className="log-section">
+            <h3>私人记录</h3>
+            {privateLog.map((entry) => (
+              <div className="log-entry private-log" key={entry.id}>
+                {formatPublicLog(entry)}
+              </div>
             ))}
           </section>
         )}

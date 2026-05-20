@@ -15,9 +15,10 @@ const factionLabel: Record<Faction, string> = {
   white: '白方',
 };
 
-const victoryReasonLabel: Record<'threeTrueInfo' | 'clearField', string> = {
+const victoryReasonLabel: Record<string, string> = {
   threeTrueInfo: '三张真情报',
   clearField: '清场',
+  secretMission: '完成机密任务',
 };
 
 const hasPrivateInfo = (player: unknown): player is PrivatePlayerView =>
@@ -59,10 +60,9 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
     if (pending) onPlayerCommand({ type: 'PassPendingAction', playerId: me.playerId, pendingActionId: pending.pendingActionId });
   };
 
-  const declareVictory = (reason: 'threeTrueInfo' | 'clearField') => {
-    if (me.revealedFaction === 'red' || me.revealedFaction === 'blue') {
-      onPlayerCommand({ type: 'DeclareVictory', playerId: me.playerId, faction: me.revealedFaction, reason });
-    }
+  const declareVictory = (reason: 'threeTrueInfo' | 'clearField' | 'secretMission') => {
+    if (!me.revealedFaction) return;
+    onPlayerCommand({ type: 'DeclareVictory', playerId: me.playerId, faction: me.revealedFaction, reason });
   };
 
   const useCharacterSkill = (skillId: string, targetPlayerId?: string, secondaryTargetPlayerId?: string) => {
@@ -129,8 +129,9 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
             <h3>宣胜窗口</h3>
             <p className="muted">如果已经满足胜利条件，可以在技能阶段开始前宣胜；否则跳过。</p>
             <div className="actions">
-              <button onClick={() => declareVictory('threeTrueInfo')}>三真宣胜</button>
-              <button onClick={() => declareVictory('clearField')}>清场宣胜</button>
+              {(me.revealedFaction === 'red' || me.revealedFaction === 'blue') && <button className="action-pulse" onClick={() => declareVictory('threeTrueInfo')}>三真宣胜</button>}
+              {(me.revealedFaction === 'red' || me.revealedFaction === 'blue') && <button className="action-pulse" onClick={() => declareVictory('clearField')}>清场宣胜</button>}
+              {me.revealedFaction === 'white' && <button className="action-pulse" onClick={() => declareVictory('secretMission')}>机密任务宣胜</button>}
               <button onClick={pass}>暂不宣胜</button>
             </div>
           </div>
@@ -155,7 +156,7 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
               </select>
             </label>
             <div className="actions">
-              <button disabled={!selectedProbeTarget} onClick={() => onPlayerCommand({ type: 'UseProbe', playerId: me.playerId, targetPlayerId: selectedProbeTarget as PlayerId, declaredFaction: probeFaction })}>使用试探</button>
+              <button className="action-pulse" disabled={!selectedProbeTarget} onClick={() => onPlayerCommand({ type: 'UseProbe', playerId: me.playerId, targetPlayerId: selectedProbeTarget as PlayerId, declaredFaction: probeFaction })}>使用试探</button>
               <button onClick={pass}>进入传递阶段</button>
             </div>
           </div>
@@ -178,7 +179,7 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
                 <option value="false">假情报</option>
               </select>
             </label>
-            <button disabled={!selectedTransferTarget} onClick={() => onPlayerCommand({ type: 'DeclareTransfer', playerId: me.playerId, targetPlayerId: selectedTransferTarget as PlayerId, truth: transferTruth })}>声明传递</button>
+            <button className="action-pulse" disabled={!selectedTransferTarget} onClick={() => onPlayerCommand({ type: 'DeclareTransfer', playerId: me.playerId, targetPlayerId: selectedTransferTarget as PlayerId, truth: transferTruth })}>声明传递</button>
           </div>
         )}
 
@@ -203,7 +204,7 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
             <h3>接收/拒收</h3>
             <p className="muted">接收则情报归你；拒收则退回传递者。被锁定时不能拒收。</p>
             <div className="actions">
-              <button onClick={() => onPlayerCommand({ type: 'ReceiveInfo', playerId: me.playerId, transferId: currentTransfer.transferId, decision: 'receive' })}>接收</button>
+              <button className="action-pulse" onClick={() => onPlayerCommand({ type: 'ReceiveInfo', playerId: me.playerId, transferId: currentTransfer.transferId, decision: 'receive' })}>接收</button>
               <button disabled={currentTransfer.forcedReceive} onClick={() => onPlayerCommand({ type: 'ReceiveInfo', playerId: me.playerId, transferId: currentTransfer.transferId, decision: 'reject' })}>拒收</button>
             </div>
           </div>

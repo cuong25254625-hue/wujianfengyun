@@ -74,8 +74,10 @@ export function PlayerList({ room, session, children }: PlayerListProps) {
                 <div className="seat-badges">
                   {seat.isOwner && <span className="badge">房主</span>}
                   {isMe && <span className="badge blue">我</span>}
+                  {!seat.connected && <span className="badge danger">断线</span>}
                   <span className={seat.ready ? 'ok' : 'muted'}>{seat.ready ? '已准备' : '未准备'}</span>
                 </div>
+                {!gamePlayer && seat.characterPreferenceName && <p>预选：{seat.characterPreferenceName}</p>}
                 {gamePlayer && (
                   <>
                     <p>{aliveText(gamePlayer.aliveState)} / {factionText(gamePlayer.revealedFaction)}</p>

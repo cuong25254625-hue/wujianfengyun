@@ -1,5 +1,5 @@
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { ClientMessage, PlayerCommand, RoomClientCommand, RoomId, ServerMessage } from '@wujian/shared';
+import type { ClientMessage, PlayerCommand, RoomClientCommand, RoomId, ServerMessage, UserId } from '@wujian/shared';
 import type { DomainError } from '@wujian/shared';
 import { RoomManager } from '../rooms/room-manager.js';
 import { toRoomView } from '../view/public-view.js';
@@ -17,6 +17,9 @@ export class GameWebSocketServer {
   private readonly rooms = new RoomManager();
   private readonly clients = new Set<ConnectedClient>();
 
+  // 延迟断开计时器：userId → timer，用于防止断线重连时的竞态
+  private readonly pendingDisconnects = new Map<string, ReturnType<typeof setTimeout>>();
+
   constructor(private readonly port: number) {
     this.wss = new WebSocketServer({ port });
   }
@@ -30,13 +33,20 @@ export class GameWebSocketServer {
       socket.on('message', (data) => this.handleMessage(client, data.toString()));
       socket.on('close', () => {
         this.clients.delete(client);
-        if (client.session.roomId) {
-          const runtimeResult = this.rooms.getRuntime(client.session.roomId);
+        const userId = client.session.userId;
+        const roomId = client.session.roomId;
+        if (!roomId) return;
+
+        // 延迟 5 秒再标记断开，留时间给客户端重连
+        const timer = setTimeout(() => {
+          const runtimeResult = this.rooms.getRuntime(roomId);
           if (runtimeResult.ok) {
-            runtimeResult.value.setConnected(client.session.userId, false);
-            this.broadcastRoom(client.session.roomId);
+            runtimeResult.value.setConnected(userId, false);
+            this.broadcastRoom(roomId);
           }
-        }
+          this.pendingDisconnects.delete(userId);
+        }, 5000);
+        this.pendingDisconnects.set(userId, timer);
       });
     });
   }
@@ -53,6 +63,11 @@ export class GameWebSocketServer {
     if (message.type === 'hello') {
       client.session.displayName = message.displayName?.trim() || client.session.displayName || '玩家';
       this.send(client, { type: 'hello', session: client.session.toView() });
+      return;
+    }
+
+    if (message.type === 'reconnect') {
+      this.handleReconnect(client, message.userId, message.roomId);
       return;
     }
 
@@ -125,6 +140,20 @@ export class GameWebSocketServer {
         this.broadcastRoom(command.roomId);
         return;
       }
+      case 'SelectCharacter': {
+        const runtimeResult = this.rooms.getRuntime(command.roomId);
+        if (!runtimeResult.ok) {
+          this.send(client, { type: 'error', error: runtimeResult.error });
+          return;
+        }
+        const result = runtimeResult.value.selectCharacter(client.session.userId, command.characterId);
+        if (!result.ok) {
+          this.send(client, { type: 'error', error: result.error });
+          return;
+        }
+        this.broadcastRoom(command.roomId);
+        return;
+      }
       case 'SetReady': {
         const runtimeResult = this.rooms.getRuntime(command.roomId);
         if (!runtimeResult.ok) {
@@ -182,6 +211,40 @@ export class GameWebSocketServer {
         session: client.session.toView(),
       });
     }
+  }
+
+  private handleReconnect(client: ConnectedClient, userId: string, roomId: RoomId): void {
+    // 取消该 userId 的延迟断开计时器
+    const timer = this.pendingDisconnects.get(userId);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingDisconnects.delete(userId);
+    }
+
+    const runtimeResult = this.rooms.getRuntime(roomId);
+    if (!runtimeResult.ok) {
+      this.send(client, { type: 'error', error: runtimeResult.error });
+      return;
+    }
+
+    const seat = runtimeResult.value.room.seats.find((s) => s.userId === userId);
+    if (!seat) {
+      this.send(client, { type: 'error', error: makeError('reconnect.seatNotFound', '未找到你的座位，房间可能已经关闭') });
+      return;
+    }
+
+    // 恢复会话身份
+    client.session.userId = userId as UserId;
+    client.session.roomId = roomId;
+    if (seat.displayName) {
+      client.session.displayName = seat.displayName;
+    }
+
+    // 标记为已连接
+    runtimeResult.value.setConnected(userId as UserId, true);
+
+    // 下发完整房间状态
+    this.broadcastRoom(roomId);
   }
 
   private send(client: ConnectedClient, message: ServerMessage): void {

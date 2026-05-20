@@ -26,6 +26,7 @@ export interface RoomSeat {
   displayName: string;
   ready: boolean;
   connected: boolean;
+  characterPreferenceId?: CharacterId;
 }
 
 export interface GameRoom {
@@ -50,6 +51,7 @@ export interface GameState {
   eventQueue: EventEnvelope<GameEvent>[];
   pendingActions: Record<PendingActionId, PendingAction>;
   publicLog: PublicLogEntry[];
+  privateLogs: Record<PlayerId, PrivateLogEntry[]>;
   deathQueue: unknown[];
   winState: WinState;
   version: number;
@@ -82,7 +84,11 @@ export interface Player {
   knownIdentities: KnownIdentity[];
   flags: Record<string, boolean | number | string>;
   tags: string[];
+  missionStatus: MissionStatus;
+  missionCounters: Record<string, number>;
 }
+
+export type MissionStatus = 'pending' | 'met' | 'declared';
 
 export interface RegularSkillState {
   probeRemaining: number;
@@ -131,11 +137,19 @@ export interface PublicLogEntry {
   createdAt: number;
 }
 
+export interface PrivateLogEntry {
+  id: string;
+  messageKey: string;
+  params: Record<string, string | number | boolean>;
+  createdAt: number;
+}
+
 export interface WinState {
   finished: boolean;
   winner?: {
-    faction: Extract<Faction, 'red' | 'blue'>;
+    faction: Faction;
     declaredByPlayerId: PlayerId;
-    reason: 'threeTrueInfo' | 'clearField';
+    reason: 'threeTrueInfo' | 'clearField' | 'secretMission';
+    missionPlayerId?: PlayerId;
   };
 }

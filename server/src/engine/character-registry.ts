@@ -23,7 +23,26 @@ export const MVP_CHARACTER_POOL: CharacterDefinition[] = [
   { characterId: 'char_020_gasai_yuno' as CharacterId, name: '我妻由乃', visibility: 'public', gender: 'female', skillIds: ['beng_huai', 'xin_sheng'], imageUrl: '/characters/我妻由乃.png', mvpImplemented: true },
 ];
 
-export const assignMvpCharacters = (playerCount: number): CharacterDefinition[] => {
+export const assignMvpCharacters = (playerCount: number, preferredIds: CharacterId[] = []): CharacterDefinition[] => {
   if (playerCount > MVP_CHARACTER_POOL.length) throw new Error('MVP character pool is too small');
-  return MVP_CHARACTER_POOL.slice(0, playerCount);
+
+  const assigned: CharacterDefinition[] = [];
+  const used = new Set<CharacterId>();
+
+  for (const preferredId of preferredIds) {
+    const character = MVP_CHARACTER_POOL.find((item) => item.characterId === preferredId);
+    if (!character || used.has(character.characterId)) continue;
+    assigned.push(character);
+    used.add(character.characterId);
+    if (assigned.length >= playerCount) return assigned;
+  }
+
+  for (const character of MVP_CHARACTER_POOL) {
+    if (used.has(character.characterId)) continue;
+    assigned.push(character);
+    used.add(character.characterId);
+    if (assigned.length >= playerCount) return assigned;
+  }
+
+  return assigned;
 };

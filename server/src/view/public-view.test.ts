@@ -21,6 +21,8 @@ const makePlayer = (overrides: Partial<Player>): Player => ({
   knownIdentities: [],
   flags: {},
   tags: [],
+  missionStatus: 'pending',
+  missionCounters: {},
   ...overrides,
 });
 
@@ -42,6 +44,7 @@ const createState = (): GameState => {
     eventQueue: [],
     pendingActions: {},
     publicLog: [],
+    privateLogs: {},
     deathQueue: [],
     winState: { finished: false },
     version: 1,

@@ -1,13 +1,23 @@
 import type { GamePhase, PhaseState } from './phase.js';
-import type { CurrentTransfer, GameRoom, GameStatus, PublicLogEntry, RegularSkillState, RoomStatus, WinState } from './game-state.js';
+import type { CurrentTransfer, GameRoom, GameStatus, PrivateLogEntry, PublicLogEntry, RegularSkillState, RoomStatus, WinState } from './game-state.js';
 import type { PendingAction } from './pending-action.js';
 import type { AliveState, CharacterId, CharacterVisibility, Faction, Gender, InfoTruth, PlayerId, RoomId, UserId } from './types.js';
+
+export interface CharacterChoiceView {
+  characterId: CharacterId;
+  name: string;
+  visibility: CharacterVisibility;
+  gender: Gender;
+  imageUrl: string;
+  skillIds: string[];
+}
 
 export interface RoomView {
   roomId: RoomId;
   status: RoomStatus;
   ownerUserId: UserId;
   seats: RoomSeatView[];
+  availableCharacters: CharacterChoiceView[];
   game?: PublicGameView;
 }
 
@@ -19,6 +29,8 @@ export interface RoomSeatView {
   ready: boolean;
   connected: boolean;
   isOwner: boolean;
+  characterPreferenceId?: CharacterId;
+  characterPreferenceName?: string;
 }
 
 export interface SkillView {
@@ -77,6 +89,7 @@ export interface PrivatePlayerView extends PublicPlayerView {
   faction: Faction;
   regularSkills: RegularSkillState;
   ownSkills: SkillView[];
+  privateLog: PrivateLogEntry[];
 }
 
 export interface PublicCurrentTransferView {

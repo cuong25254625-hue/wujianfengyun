@@ -66,8 +66,8 @@ export type DyingDeathEvent =
 
 export type VictoryEvent =
   | { type: 'VictoryCandidateFound'; playerIds: PlayerId[] }
-  | { type: 'VictoryDeclared'; playerId: PlayerId; faction: Extract<Faction, 'red' | 'blue'>; reason: 'threeTrueInfo' | 'clearField' }
-  | { type: 'GameFinished'; faction: Extract<Faction, 'red' | 'blue'> };
+  | { type: 'VictoryDeclared'; playerId: PlayerId; faction: Faction; reason: 'threeTrueInfo' | 'clearField' | 'secretMission' }
+  | { type: 'GameFinished'; faction: Faction };
 
 export type GmEvent =
   | { type: 'GmPhaseForced'; fromPhase: GamePhase; toPhase: GamePhase; triggeredBy: UserId };
