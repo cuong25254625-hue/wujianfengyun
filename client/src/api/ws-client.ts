@@ -4,8 +4,37 @@ export type MessageHandler = (message: ServerMessage) => void;
 export type ConnectionStatus = 'connecting' | 'open' | 'closed' | 'error' | 'reconnecting';
 export type ConnectionStatusHandler = (status: ConnectionStatus) => void;
 
+const SESSION_STORAGE_KEY = 'wujianfengyun.session.v1';
+
+interface PersistedSession {
+  userId?: UserId | undefined;
+  roomId?: RoomId | undefined;
+  displayName?: string | undefined;
+}
+
+const canUseStorage = (): boolean => typeof window !== 'undefined' && Boolean(window.localStorage);
+
+const loadPersistedSession = (): PersistedSession => {
+  if (!canUseStorage()) return {};
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) as PersistedSession : {};
+  } catch {
+    return {};
+  }
+};
+
+const savePersistedSession = (session: PersistedSession): void => {
+  if (!canUseStorage()) return;
+  try {
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // localStorage 可能被浏览器隐私策略禁用，忽略即可。
+  }
+};
+
 export class WsClient {
-  private socket?: WebSocket;
+  private socket: WebSocket | undefined;
   private handlers = new Set<MessageHandler>();
   private statusHandlers = new Set<ConnectionStatusHandler>();
   private pendingMessages: ClientMessage[] = [];
@@ -20,15 +49,23 @@ export class WsClient {
   private wasOpen = false;
 
   // 用于重连时恢复身份
-  private reconnectUserId?: UserId;
-  private reconnectRoomId?: RoomId;
+  private reconnectUserId: UserId | undefined;
+  private reconnectRoomId: RoomId | undefined;
+  private displayName: string | undefined;
+
+  constructor() {
+    const persisted = loadPersistedSession();
+    this.reconnectUserId = persisted.userId;
+    this.reconnectRoomId = persisted.roomId;
+    this.displayName = persisted.displayName;
+  }
 
   connect(url = import.meta.env.VITE_WS_URL ?? `ws://${window.location.hostname}:8787`): void {
     if (this.socket && (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING)) return;
 
     this.connectUrl = url;
     this.stopReconnectTimer();
-    this.setStatus('connecting');
+    this.setStatus(this.wasOpen ? 'reconnecting' : 'connecting');
     this.socket = new WebSocket(url);
 
     this.socket.addEventListener('open', () => {
@@ -43,6 +80,8 @@ export class WsClient {
           userId: this.reconnectUserId,
           roomId: this.reconnectRoomId,
         } satisfies ClientMessage));
+      } else if (this.displayName) {
+        this.socket?.send(JSON.stringify({ type: 'hello', displayName: this.displayName } satisfies ClientMessage));
       }
 
       this.flushPendingMessages();
@@ -70,13 +109,21 @@ export class WsClient {
       // 记录身份用于重连
       if (msg.type === 'hello') {
         this.reconnectUserId = msg.session.userId;
+        this.displayName = msg.session.displayName;
         if (msg.session.roomId) {
           this.reconnectRoomId = msg.session.roomId;
         }
+        this.persistSession();
+      }
+      if (msg.type === 'roomCreated' || msg.type === 'joinedRoom') {
+        this.reconnectRoomId = msg.roomId;
+        this.persistSession();
       }
       if (msg.type === 'roomView') {
         this.reconnectUserId = msg.session.userId;
         this.reconnectRoomId = msg.room.roomId;
+        this.displayName = msg.session.displayName;
+        this.persistSession();
       }
       this.handlers.forEach((handler) => handler(msg));
     });
@@ -94,19 +141,46 @@ export class WsClient {
   }
 
   send(message: ClientMessage): void {
-    if (!this.socket || this.socket.readyState === WebSocket.CONNECTING) {
+    this.rememberOutgoingMessage(message);
+    if (!this.socket || this.socket.readyState === WebSocket.CONNECTING || this.socket.readyState === WebSocket.CLOSING || this.socket.readyState === WebSocket.CLOSED) {
       this.pendingMessages.push(message);
+      if (this.connectUrl && this.status !== 'connecting' && this.status !== 'reconnecting') {
+        this.startReconnect();
+      }
       return;
     }
 
-    if (this.socket.readyState !== WebSocket.OPEN) return;
+    if (this.socket.readyState !== WebSocket.OPEN) {
+      this.pendingMessages.push(message);
+      return;
+    }
     this.socket.send(JSON.stringify(message));
+  }
+
+  requestSync(roomId?: RoomId): void {
+    const targetRoomId = roomId ?? this.reconnectRoomId;
+    if (!targetRoomId) return;
+    this.send({ type: 'requestSync', roomId: targetRoomId });
   }
 
   /** 手动强制重连（跳过退避等待） */
   forceReconnect(): void {
     this.stopReconnectTimer();
-    this.connect(this.connectUrl);
+    const url = this.connectUrl || (import.meta.env.VITE_WS_URL ?? `ws://${window.location.hostname}:8787`);
+    if (this.socket && this.socket.readyState !== WebSocket.CLOSED) {
+      this.socket.close();
+      this.socket = undefined;
+    }
+    this.connect(url);
+  }
+
+  forgetSession(): void {
+    this.reconnectUserId = undefined;
+    this.reconnectRoomId = undefined;
+    this.displayName = undefined;
+    if (canUseStorage()) {
+      window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
   }
 
   get reconnectInfo(): { attempt: number; max: number; isReconnecting: boolean } {
@@ -114,6 +188,14 @@ export class WsClient {
       attempt: this.reconnectAttempts,
       max: this.maxReconnectAttempts,
       isReconnecting: this.status === 'reconnecting',
+    };
+  }
+
+  get persistedSession(): PersistedSession {
+    return {
+      userId: this.reconnectUserId,
+      roomId: this.reconnectRoomId,
+      displayName: this.displayName,
     };
   }
 
@@ -156,5 +238,39 @@ export class WsClient {
   private setStatus(status: ConnectionStatus): void {
     this.status = status;
     this.statusHandlers.forEach((handler) => handler(status));
+  }
+
+  private rememberOutgoingMessage(message: ClientMessage): void {
+    if (message.type === 'hello') {
+      this.displayName = message.displayName ?? this.displayName;
+    }
+    if (message.type === 'reconnect') {
+      this.reconnectUserId = message.userId;
+      this.reconnectRoomId = message.roomId;
+    }
+    if (message.type === 'requestSync') {
+      this.reconnectRoomId = message.roomId;
+    }
+    if (message.type === 'roomCommand') {
+      const command = message.command;
+      if (command.type === 'CreateRoom' || command.type === 'JoinRoom' || command.type === 'UpdateDisplayName') {
+        this.displayName = command.displayName;
+      }
+      if ('roomId' in command) {
+        this.reconnectRoomId = command.roomId;
+      }
+    }
+    if (message.type === 'playerCommand') {
+      this.reconnectRoomId = message.roomId;
+    }
+    this.persistSession();
+  }
+
+  private persistSession(): void {
+    savePersistedSession({
+      userId: this.reconnectUserId,
+      roomId: this.reconnectRoomId,
+      displayName: this.displayName,
+    });
   }
 }

@@ -42,10 +42,28 @@ export interface GameRoom {
   updatedAt: number;
 }
 
+export type SetupStep = 'characterSelection' | 'openingOptions' | 'complete';
+
+export interface SetupState {
+  step: SetupStep;
+  requiredPlayerIds: PlayerId[];
+  completedPlayerIds: PlayerId[];
+}
+
+export interface FinalPkState {
+  whitePlayerId: PlayerId;
+  opponentPlayerId: PlayerId;
+  enteredAtTurnSerial: number;
+  transfersAfterEntry: number;
+  burnUsed: boolean;
+}
+
 export interface GameState {
   roomId: RoomId;
   config: GameConfig;
   status: GameStatus;
+  setupState?: SetupState;
+  finalPk?: FinalPkState;
   players: Record<PlayerId, Player>;
   turn: TurnState;
   phase: PhaseState;

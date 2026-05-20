@@ -7,6 +7,7 @@ export type PlayerCommand =
   | UseLockCommand
   | UseInterceptCommand
   | UseCharacterSkillCommand
+  | UseFinalPkBurnCommand
   | DeclareVictoryCommand
   | PassPendingActionCommand;
 
@@ -59,6 +60,12 @@ export interface UseCharacterSkillCommand {
   };
 }
 
+export interface UseFinalPkBurnCommand {
+  type: 'UseFinalPkBurn';
+  playerId: PlayerId;
+  targetPlayerId: PlayerId;
+}
+
 export interface DeclareVictoryCommand {
   type: 'DeclareVictory';
   playerId: PlayerId;
@@ -77,6 +84,7 @@ export type RoomClientCommand =
   | { type: 'JoinRoom'; roomId: RoomId; displayName: string }
   | { type: 'UpdateDisplayName'; roomId: RoomId; displayName: string }
   | { type: 'SelectCharacter'; roomId: RoomId; characterId: CharacterId }
+  | { type: 'SubmitSetupChoice'; roomId: RoomId; choiceKey: 'ccMissionTarget'; targetPlayerId: PlayerId }
   | { type: 'SetReady'; roomId: RoomId; ready: boolean }
   | { type: 'StartGame'; roomId: RoomId }
   | { type: 'GmForceAdvance'; roomId: RoomId };

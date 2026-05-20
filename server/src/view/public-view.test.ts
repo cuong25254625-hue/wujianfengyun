@@ -128,6 +128,68 @@ describe('public-view', () => {
     expect(view.systemHints.map((hint) => `${hint.title} ${hint.message}`).join('\n')).not.toContain('陈永仁');
   });
 
+  it('keeps private logs private and filters sensitive public log keys', () => {
+    const state = createState();
+    state.publicLog.push(
+      { id: 'log_public', messageKey: 'transfer.declared', params: { from: 'A', target: 'B', truth: 'true' }, createdAt: 1 },
+      { id: 'log_private', messageKey: 'character.tanJiu', params: { player: 'A', targetCharacterName: '陈永仁' }, createdAt: 2 },
+    );
+    state.privateLogs['player_a' as Player['playerId']] = [
+      { id: 'private_a', messageKey: 'character.tanJiu', params: { player: 'A', targetCharacterName: '陈永仁' }, createdAt: 3 },
+    ];
+
+    const ownView = toPublicGameView(state, 'user_a' as Player['userId']);
+    const ownPlayer = ownView.players.find((player) => player.userId === 'user_a') as { privateLog?: unknown[] } | undefined;
+    expect(ownPlayer?.privateLog?.length).toBe(1);
+    expect(ownView.publicLog.map((entry) => entry.messageKey)).toEqual(['transfer.declared']);
+
+    const otherView = toPublicGameView(state, 'user_b' as Player['userId']);
+    const playerAForB = otherView.players.find((player) => player.userId === 'user_a') as { privateLog?: unknown[] } | undefined;
+    expect(playerAForB?.privateLog).toBeUndefined();
+    expect(otherView.publicLog.map((entry) => entry.messageKey)).toEqual(['transfer.declared']);
+    expect(JSON.stringify(otherView)).not.toContain('private_a');
+  });
+
+  it('redacts hidden character names in public log params for unauthorized viewers', () => {
+    const state = createState();
+    const playerA = state.players['player_a' as Player['playerId']];
+    if (!playerA) throw new Error('missing player A');
+    playerA.characterId = 'char_001_chen_yong_ren' as NonNullable<Player['characterId']>;
+    playerA.characterName = '陈永仁';
+    playerA.characterVisibility = 'hidden';
+    playerA.characterRevealed = false;
+    state.publicLog.push({ id: 'log_reveal', messageKey: 'debug.character', params: { characterName: '陈永仁' }, createdAt: 1 });
+
+    const ownView = toPublicGameView(state, 'user_a' as Player['userId']);
+    expect(JSON.stringify(ownView.publicLog)).toContain('陈永仁');
+
+    const otherView = toPublicGameView(state, 'user_b' as Player['userId']);
+    expect(JSON.stringify(otherView.publicLog)).not.toContain('陈永仁');
+    expect(JSON.stringify(otherView.publicLog)).toContain('隐藏角色');
+  });
+
+  it('redacts generic pending-action private target context', () => {
+    const state = createState();
+    state.pendingActions['pending_cc' as keyof typeof state.pendingActions] = {
+      pendingActionId: 'pending_cc',
+      kind: 'characterSkillWindow',
+      phase: 'Setup',
+      eligiblePlayerIds: ['player_a' as Player['playerId']],
+      status: 'open',
+      responses: [],
+      priorityPolicy: 'serverReceiveOrder',
+      context: { type: 'generic', data: { choiceKey: 'ccMissionTarget', ccMissionTargetPlayerId: 'player_b', publicText: '请选择目标' } },
+    };
+
+    const ownView = toPublicGameView(state, 'user_a' as Player['userId']);
+    expect(ownView.pendingActionsForMe.length).toBe(1);
+    expect(JSON.stringify(ownView.pendingActionsForMe)).not.toContain('ccMissionTargetPlayerId');
+    expect(JSON.stringify(ownView.pendingActionsForMe)).toContain('请选择目标');
+
+    const otherView = toPublicGameView(state, 'user_b' as Player['userId']);
+    expect(otherView.pendingActionsForMe.length).toBe(0);
+  });
+
   it('only exposes private character options to the owning user during setup selection', () => {
     const state = createState();
     state.status = 'setup';

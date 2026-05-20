@@ -1,21 +1,91 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CharacterId, PlayerCommand, RoomId, RoomView, ServerMessage, SessionView } from '@wujian/shared';
+import type { CharacterId, ClientMessage, PlayerCommand, RoomId, RoomView, ServerMessage, SessionView } from '@wujian/shared';
 import { WsClient } from './api/ws-client';
 import { GameBoard } from './components/GameBoard';
 import { LogPanel } from './components/LogPanel';
 import { PlayerList } from './components/PlayerList';
 import { RoomPanel } from './components/RoomPanel';
 
+type ToastKind = 'success' | 'error' | 'info' | 'warning';
+
+interface ToastMessage {
+  id: string;
+  kind: ToastKind;
+  message: string;
+}
+
+const toastKindText: Record<ToastKind, string> = {
+  success: '成功',
+  error: '错误',
+  info: '提示',
+  warning: '注意',
+};
+
+const commandLabel = (message: ClientMessage): string => {
+  if (message.type === 'roomCommand') {
+    const labels: Record<string, string> = {
+      CreateRoom: '创建房间',
+      JoinRoom: '加入房间',
+      UpdateDisplayName: '同步昵称',
+      SelectCharacter: '选择角色',
+      SubmitSetupChoice: '提交开局选项',
+      SetReady: '准备状态',
+      StartGame: '开始游戏',
+      GmForceAdvance: '强制推进',
+    };
+    return labels[message.command.type] ?? '房间操作';
+  }
+  if (message.type === 'playerCommand') {
+    const labels: Record<string, string> = {
+      DeclareTransfer: '声明传递',
+      ReceiveInfo: '接收/拒收',
+      UseProbe: '试探',
+      UseLock: '锁定',
+      UseIntercept: '截获',
+      UseCharacterSkill: '人物技能',
+      UseFinalPkBurn: '最终PK烧毁',
+      DeclareVictory: '宣胜',
+      PassPendingAction: '跳过窗口',
+    };
+    return labels[message.command.type] ?? '对局操作';
+  }
+  if (message.type === 'requestSync') return '同步状态';
+  if (message.type === 'reconnect') return '恢复座位';
+  return '连接操作';
+};
+
 export default function App() {
   const client = useMemo(() => new WsClient(), []);
+  const persistedSession = client.persistedSession;
   const [session, setSession] = useState<SessionView>();
   const [room, setRoom] = useState<RoomView>();
-  const [displayName, setDisplayName] = useState(`玩家${Math.floor(Math.random() * 1000)}`);
-  const [roomIdInput, setRoomIdInput] = useState('');
+  const [displayName, setDisplayName] = useState(persistedSession.displayName ?? `玩家${Math.floor(Math.random() * 1000)}`);
+  const [roomIdInput, setRoomIdInput] = useState(persistedSession.roomId ?? '');
   const [messages, setMessages] = useState<string[]>([]);
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [reconnectMax, setReconnectMax] = useState(12);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [pendingLabels, setPendingLabels] = useState<Record<string, string>>({});
+
+  const pushToast = (kind: ToastKind, message: string) => {
+    const id = `toast_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    setToasts((items) => [{ id, kind, message }, ...items].slice(0, 4));
+    window.setTimeout(() => {
+      setToasts((items) => items.filter((item) => item.id !== id));
+    }, 2400);
+  };
+
+  const sendWithFeedback = (message: ClientMessage, feedback = true) => {
+    const clientCommandId = `cmd_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const withId = { ...message, clientCommandId } as ClientMessage;
+    if (feedback) {
+      const label = commandLabel(message);
+      setPendingLabels((items) => ({ ...items, [clientCommandId]: label }));
+      pushToast('info', `${label}已提交`);
+    }
+    client.send(withId);
+  };
 
   useEffect(() => {
     client.connect();
@@ -27,7 +97,32 @@ export default function App() {
       }
       if (message.type === 'roomCreated') setRoomIdInput(message.roomId);
       if (message.type === 'joinedRoom') setRoomIdInput(message.roomId);
-      if (message.type === 'error') setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
+      if (message.type === 'commandAck') {
+        const label = pendingLabels[message.clientCommandId] ?? '操作';
+        setPendingLabels((items) => {
+          const next = { ...items };
+          delete next[message.clientCommandId];
+          return next;
+        });
+        pushToast('success', `${label}成功`);
+      }
+      if (message.type === 'commandRejected') {
+        const rejectedCommandId = message.clientCommandId;
+        const label = rejectedCommandId ? pendingLabels[rejectedCommandId] : '操作';
+        if (rejectedCommandId) {
+          setPendingLabels((items) => {
+            const next = { ...items };
+            delete next[rejectedCommandId];
+            return next;
+          });
+        }
+        pushToast('error', `${label}失败：${message.error.message}`);
+        setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
+      }
+      if (message.type === 'error') {
+        pushToast('error', message.error.message);
+        setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
+      }
       if (message.type === 'log') setMessages((items) => [`${message.level}: ${message.message}`, ...items].slice(0, 20));
     });
     const offStatus = client.onStatus((status) => {
@@ -35,53 +130,68 @@ export default function App() {
       const info = client.reconnectInfo;
       setReconnectAttempt(info.attempt);
       setReconnectMax(info.max);
-      if (status === 'error') setMessages((items) => ['错误：无法连接 WebSocket 服务，请确认 8787 端口的后端已启动', ...items].slice(0, 20));
-      if (status === 'closed') setMessages((items) => ['提示：WebSocket 连接已关闭，请刷新页面或重启后端', ...items].slice(0, 20));
-      if (status === 'reconnecting') setMessages((items) => [`提示：正在重连...（第 ${info.attempt}/${info.max} 次）`, ...items].slice(0, 20));
+      if (status === 'open' && info.attempt === 0) pushToast('success', '连接已恢复');
+      if (status === 'error') {
+        pushToast('error', '无法连接后端服务');
+        setMessages((items) => ['错误：无法连接 WebSocket 服务，请确认 8787 端口的后端已启动', ...items].slice(0, 20));
+      }
+      if (status === 'closed') {
+        pushToast('warning', 'WebSocket 连接已关闭');
+        setMessages((items) => ['提示：WebSocket 连接已关闭，请刷新页面或重启后端', ...items].slice(0, 20));
+      }
+      if (status === 'reconnecting') {
+        pushToast('warning', `正在重连（第 ${info.attempt}/${info.max} 次）`);
+        setMessages((items) => [`提示：正在重连...（第 ${info.attempt}/${info.max} 次）`, ...items].slice(0, 20));
+      }
     });
     return () => {
       offMessage();
       offStatus();
     };
-  }, [client]);
+  }, [client, pendingLabels]);
 
-  const sendHello = () => client.send({ type: 'hello', displayName });
+  const sendHello = () => sendWithFeedback({ type: 'hello', displayName }, false);
 
   const syncDisplayName = () => {
     const nextName = displayName.trim();
     if (!room || !nextName) return;
-    client.send({ type: 'roomCommand', command: { type: 'UpdateDisplayName', roomId: room.roomId, displayName: nextName } });
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'UpdateDisplayName', roomId: room.roomId, displayName: nextName } });
   };
 
   const createRoom = () => {
     sendHello();
-    client.send({ type: 'roomCommand', command: { type: 'CreateRoom', displayName } });
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'CreateRoom', displayName } });
   };
 
   const joinRoom = () => {
     sendHello();
-    client.send({ type: 'roomCommand', command: { type: 'JoinRoom', roomId: roomIdInput.trim() as RoomId, displayName } });
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'JoinRoom', roomId: roomIdInput.trim() as RoomId, displayName } });
   };
 
   const selectCharacter = (characterId: CharacterId) => {
     if (!room) return;
-    client.send({ type: 'roomCommand', command: { type: 'SelectCharacter', roomId: room.roomId, characterId } });
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'SelectCharacter', roomId: room.roomId, characterId } });
+  };
+
+  const submitSetupChoice = (choiceKey: 'ccMissionTarget', targetPlayerId: PlayerCommand['playerId']) => {
+    if (!room) return;
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'SubmitSetupChoice', roomId: room.roomId, choiceKey, targetPlayerId } });
   };
 
   const setReady = (ready: boolean) => {
     if (!room) return;
     syncDisplayName();
-    client.send({ type: 'roomCommand', command: { type: 'SetReady', roomId: room.roomId, ready } });
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'SetReady', roomId: room.roomId, ready } });
   };
 
   const startGame = () => {
     if (!room) return;
-    client.send({ type: 'roomCommand', command: { type: 'StartGame', roomId: room.roomId } });
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'StartGame', roomId: room.roomId } });
   };
 
   const sendPlayerCommand = (command: PlayerCommand) => {
     if (!room) return;
-    client.send({ type: 'playerCommand', roomId: room.roomId, command });
+    sendWithFeedback({ type: 'playerCommand', roomId: room.roomId, command });
   };
 
   const inGame = Boolean(room?.game && room.game.status !== 'setup');
@@ -92,6 +202,13 @@ export default function App() {
         <h1>无间风云 MVP</h1>
         <p>多人在线身份情报对局</p>
       </header>
+      <div className="toast-container" aria-live="polite">
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`toast ${toast.kind}`}>
+            <strong>{toastKindText[toast.kind]}：</strong>{toast.message}
+          </div>
+        ))}
+      </div>
       {(connectionStatus === 'reconnecting' || (connectionStatus === 'closed' && reconnectAttempt >= reconnectMax)) && (
         <div className={`reconnect-banner ${connectionStatus === 'reconnecting' ? 'reconnecting' : 'failed'}`}>
           {connectionStatus === 'reconnecting'
@@ -100,6 +217,7 @@ export default function App() {
           {connectionStatus === 'reconnecting' && (
             <button className="reconnect-now-button" onClick={() => client.forceReconnect()}>立即重连</button>
           )}
+          {room && <button className="reconnect-now-button" onClick={() => client.requestSync(room.roomId)}>同步状态</button>}
         </div>
       )}
       <div className={`game-shell ${inGame ? 'in-game-shell' : ''}`}>
@@ -117,6 +235,7 @@ export default function App() {
               onCreateRoom={createRoom}
               onJoinRoom={joinRoom}
               onSelectCharacter={selectCharacter}
+              onSubmitSetupChoice={submitSetupChoice}
               onSetReady={setReady}
               onStartGame={startGame}
             />

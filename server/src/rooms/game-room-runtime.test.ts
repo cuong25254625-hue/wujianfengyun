@@ -255,6 +255,9 @@ describe('GameRoomRuntime', () => {
         expect(runtime.setReady(userId(index), true).ok).toBe(true);
       }
       expect(runtime.startGame(userId(0)).ok).toBe(true);
+      runtime.room.seats.forEach((seat, index) => {
+        seat.characterOptionIds = [MVP_CHARACTER_POOL[index]!.characterId];
+      });
       const chosen = runtime.room.seats.map((seat) => seat.characterOptionIds?.[0]);
       for (let index = 0; index < 4; index += 1) {
         const option = chosen[index];
@@ -266,10 +269,71 @@ describe('GameRoomRuntime', () => {
       if (!game) throw new Error('game did not start');
       const players = Object.values(game.players).sort((left, right) => left.seatIndex - right.seatIndex);
       expect(game.status).toBe('running');
+      expect(game.setupState?.step).toBe('complete');
       expect(game.phase.phase).toBe('VictoryDeclareWindow');
       expect(players.map((player) => player.characterId)).toEqual(chosen);
       expect(Object.values(game.pendingActions).some((action) => action.kind === 'victoryDeclareWindow' && action.status === 'open')).toBe(true);
       expect(game.eventQueue.filter((event) => event.type === 'CharacterAssigned')).toHaveLength(4);
+    });
+
+    it('opens a private C.C target setup choice and waits before first victory window', () => {
+      const runtime = new GameRoomRuntime('ROOM01' as never, userId(0), '玩家0');
+      for (let index = 1; index < 4; index += 1) {
+        expect(runtime.join({ userId: userId(index), displayName: `玩家${index}` }).ok).toBe(true);
+        expect(runtime.setReady(userId(index), true).ok).toBe(true);
+      }
+      expect(runtime.startGame(userId(0)).ok).toBe(true);
+      const ccId = 'char_016_cc' as never;
+      runtime.room.seats.forEach((seat, index) => {
+        seat.characterOptionIds = [index === 0 ? ccId : MVP_CHARACTER_POOL[index]!.characterId];
+      });
+
+      for (let index = 0; index < 4; index += 1) {
+        const option = runtime.room.seats[index]?.characterOptionIds?.[0];
+        if (!option) throw new Error('missing option');
+        expect(runtime.selectCharacter(userId(index), option).ok).toBe(true);
+      }
+
+      const game = getGame(runtime);
+      const cc = playersBySeat(runtime)[0]!;
+      expect(game.status).toBe('setup');
+      expect(game.setupState?.step).toBe('openingOptions');
+      expect(game.setupState?.requiredPlayerIds).toEqual([cc.playerId]);
+      expect(game.phase.phase).toBe('Setup');
+      const action = Object.values(game.pendingActions).find((item) => item.status === 'open' && item.kind === 'characterSkillWindow');
+      expect(action?.eligiblePlayerIds).toEqual([cc.playerId]);
+      expect(Object.values(game.pendingActions).some((item) => item.kind === 'victoryDeclareWindow' && item.status === 'open')).toBe(false);
+    });
+
+    it('submits C.C target privately and then starts the first victory window', () => {
+      const runtime = new GameRoomRuntime('ROOM01' as never, userId(0), '玩家0');
+      for (let index = 1; index < 4; index += 1) {
+        expect(runtime.join({ userId: userId(index), displayName: `玩家${index}` }).ok).toBe(true);
+        expect(runtime.setReady(userId(index), true).ok).toBe(true);
+      }
+      expect(runtime.startGame(userId(0)).ok).toBe(true);
+      const ccId = 'char_016_cc' as never;
+      runtime.room.seats.forEach((seat, index) => {
+        seat.characterOptionIds = [index === 0 ? ccId : MVP_CHARACTER_POOL[index]!.characterId];
+      });
+      for (let index = 0; index < 4; index += 1) {
+        const option = runtime.room.seats[index]?.characterOptionIds?.[0];
+        if (!option) throw new Error('missing option');
+        expect(runtime.selectCharacter(userId(index), option).ok).toBe(true);
+      }
+
+      const cc = playersBySeat(runtime)[0]!;
+      const target = playersBySeat(runtime)[1]!;
+      expect(runtime.submitSetupChoice(userId(0), 'ccMissionTarget', cc.playerId).ok).toBe(false);
+      expect(runtime.submitSetupChoice(userId(0), 'ccMissionTarget', target.playerId).ok).toBe(true);
+
+      const game = getGame(runtime);
+      expect(cc.flags.cc_mission_target).toBe(target.playerId);
+      expect(game.status).toBe('running');
+      expect(game.setupState?.step).toBe('complete');
+      expect(game.phase.phase).toBe('VictoryDeclareWindow');
+      expect(Object.values(game.pendingActions).some((item) => item.kind === 'victoryDeclareWindow' && item.status === 'open')).toBe(true);
+      expect(game.privateLogs[cc.playerId]?.map((entry) => entry.messageKey)).toContain('mission.ccTargetSelected');
     });
   });
 

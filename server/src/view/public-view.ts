@@ -3,7 +3,6 @@ import type {
   GameState,
   GamePhase,
   Player,
-  PrivateLogEntry,
   PrivatePlayerView,
   PendingAction,
   PublicGameView,
@@ -15,6 +14,15 @@ import type {
 } from '@wujian/shared';
 import { MVP_CHARACTER_POOL } from '../engine/character-registry.js';
 import { getRegularSkillViews, getSkillViews } from '../engine/skill-registry.js';
+import {
+  canViewCharacter,
+  canViewFaction,
+  canViewSkillDetails,
+  redactPendingActionForViewer,
+  viewerPlayerForUser,
+  visiblePrivateLogEntries,
+  visiblePublicLogEntries,
+} from './visibility-policy.js';
 
 const countInfos = (state: GameState, playerId: string) => {
   const infos = Object.values(state.infoCards).filter((info) => info.ownerPlayerId === playerId);
@@ -28,15 +36,14 @@ const pendingActionsForUser = (state: GameState, viewerUserId?: UserId): Pending
   if (!viewerUserId) return [];
   const player = Object.values(state.players).find((item) => item.userId === viewerUserId);
   if (!player) return [];
-  return Object.values(state.pendingActions).filter(
-    (action) => action.status === 'open' && action.eligiblePlayerIds.includes(player.playerId),
-  );
+  return Object.values(state.pendingActions)
+    .filter((action) => action.status === 'open' && action.eligiblePlayerIds.includes(player.playerId))
+    .map((action) => redactPendingActionForViewer(action));
 };
 
 const characterDefinitionById = new Map(MVP_CHARACTER_POOL.map((character) => [character.characterId, character]));
 
-const playerForUser = (state: GameState, viewerUserId?: UserId): Player | undefined =>
-  viewerUserId ? Object.values(state.players).find((player) => player.userId === viewerUserId) : undefined;
+const playerForUser = (state: GameState, viewerUserId?: UserId): Player | undefined => viewerPlayerForUser(state, viewerUserId);
 
 const playerName = (state: GameState, playerId: string | undefined): string =>
   playerId ? (state.players[playerId as keyof typeof state.players]?.displayName ?? '未知玩家') : '未知玩家';
@@ -149,8 +156,11 @@ export const toPublicPlayerView = (state: GameState, playerId: string, viewerUse
     throw new Error(`Unknown player ${playerId}`);
   }
 
+  const viewer = viewerPlayerForUser(state, viewerUserId);
   const isSelf = player.userId === viewerUserId;
-  const characterVisible = isSelf || player.characterRevealed || player.characterVisibility === 'public';
+  const characterVisible = canViewCharacter(viewer, player);
+  const factionVisible = canViewFaction(viewer, player);
+  const skillDetailsVisible = canViewSkillDetails(viewer, player);
   const base: PublicPlayerView = {
     playerId: player.playerId,
     userId: player.userId,
@@ -158,14 +168,14 @@ export const toPublicPlayerView = (state: GameState, playerId: string, viewerUse
     seatIndex: player.seatIndex,
     aliveState: player.aliveState,
     identityRevealed: player.identityRevealed,
-    revealedFaction: player.identityRevealed || isSelf ? player.faction : undefined,
+    revealedFaction: factionVisible ? player.faction : undefined,
     ...(characterVisible && player.characterId ? { characterId: player.characterId } : {}),
     ...(characterVisible && player.characterName ? { characterName: player.characterName } : {}),
     ...(characterVisible && player.characterImageUrl ? { characterImageUrl: player.characterImageUrl } : {}),
     characterVisibility: player.characterVisibility,
     characterRevealed: player.characterRevealed,
     gender: player.gender,
-    ...(characterVisible ? { characterSkills: characterSkillViews(player) } : {}),
+    ...(skillDetailsVisible ? { characterSkills: characterSkillViews(player) } : {}),
     ...countInfos(state, playerId),
   };
 
@@ -176,7 +186,7 @@ export const toPublicPlayerView = (state: GameState, playerId: string, viewerUse
     faction: player.faction,
     regularSkills: player.regularSkills,
     ownSkills: [...getRegularSkillViews(player.regularSkills), ...characterSkillViews(player)],
-    privateLog: (state.privateLogs as Record<string, PrivateLogEntry[]>)[playerId] ?? [],
+    privateLog: visiblePrivateLogEntries(state, viewer, player),
   };
 };
 
@@ -184,6 +194,8 @@ export const toPublicGameView = (state: GameState, viewerUserId?: UserId): Publi
   const view: PublicGameView = {
     roomId: state.roomId,
     status: state.status,
+    ...(state.setupState ? { setupState: state.setupState } : {}),
+    ...(state.finalPk ? { finalPk: state.finalPk } : {}),
     phase: state.phase,
     roundNumber: state.turn.roundNumber,
     activeSeatIndex: state.turn.activeSeatIndex,
@@ -192,7 +204,7 @@ export const toPublicGameView = (state: GameState, viewerUserId?: UserId): Publi
       .sort((left, right) => left.seatIndex - right.seatIndex),
     pendingActionsForMe: pendingActionsForUser(state, viewerUserId),
     systemHints: buildSystemHints(state, viewerUserId),
-    publicLog: state.publicLog,
+    publicLog: visiblePublicLogEntries(state, viewerPlayerForUser(state, viewerUserId)),
     winner: state.winState.winner,
     version: state.version,
   };

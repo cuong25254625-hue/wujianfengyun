@@ -1,5 +1,5 @@
 import type { GamePhase, PhaseState } from './phase.js';
-import type { CurrentTransfer, GameRoom, GameStatus, PrivateLogEntry, PublicLogEntry, RegularSkillState, RoomStatus, WinState } from './game-state.js';
+import type { CurrentTransfer, FinalPkState, GameRoom, GameStatus, PrivateLogEntry, PublicLogEntry, RegularSkillState, RoomStatus, SetupState, WinState } from './game-state.js';
 import type { PendingAction } from './pending-action.js';
 import type { AliveState, CharacterId, CharacterVisibility, Faction, Gender, InfoTruth, PlayerId, RoomId, UserId } from './types.js';
 
@@ -58,6 +58,8 @@ export interface SystemHintView {
 export interface PublicGameView {
   roomId: RoomId;
   status: GameStatus;
+  setupState?: SetupState;
+  finalPk?: FinalPkState;
   phase: PhaseState;
   roundNumber: number;
   activeSeatIndex: number;

@@ -102,6 +102,16 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
         </p>
       )}
 
+      {game.finalPk && (
+        <div className="subcard transfer-summary warning">
+          <strong>最终 PK</strong>
+          <p>
+            白方 {nameOf(game, game.finalPk.whitePlayerId)} 对决 {nameOf(game, game.finalPk.opponentPlayerId)}；
+            PK 后已结算传递 {game.finalPk.transfersAfterEntry}/11 次。
+          </p>
+        </div>
+      )}
+
       {currentTransfer && (
         <div className="subcard transfer-summary">
           <strong>当前传递</strong>

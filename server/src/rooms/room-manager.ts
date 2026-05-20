@@ -28,4 +28,24 @@ export class RoomManager {
   findRoomByUser(userId: UserId): GameRoomRuntime | undefined {
     return Array.from(this.rooms.values()).find((runtime) => runtime.room.seats.some((seat) => seat.userId === userId));
   }
+
+  /** 获取所有房间的 GameRoom 快照用于持久化。 */
+  getAllRoomStates(): Map<string, import('@wujian/shared').GameRoom> {
+    const states = new Map<string, import('@wujian/shared').GameRoom>();
+    for (const [id, runtime] of this.rooms) {
+      states.set(id, runtime.room);
+    }
+    return states;
+  }
+
+  /** 从持久化数据恢复房间。仅恢复状态非 'closed' 的房间。 */
+  restoreFromPersistence(rooms: Map<string, import('@wujian/shared').GameRoom>): void {
+    for (const [roomId, room] of rooms) {
+      if (room.status === 'closed') continue;
+      // 根据保存的 room 数据重建 runtime
+      const runtime = GameRoomRuntime.fromSaved(room);
+      this.rooms.set(roomId as RoomId, runtime);
+      console.log(`[persistence] 恢复房间 ${roomId}（${room.seats.length} 名玩家，状态 ${room.status}）`);
+    }
+  }
 }

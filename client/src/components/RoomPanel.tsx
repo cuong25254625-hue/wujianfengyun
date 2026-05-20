@@ -1,4 +1,5 @@
-import type { CharacterId, RoomView, SessionView } from '@wujian/shared';
+import { useMemo, useState } from 'react';
+import type { CharacterId, PlayerId, RoomView, SessionView } from '@wujian/shared';
 
 interface RoomPanelProps {
   room: RoomView | undefined;
@@ -12,6 +13,7 @@ interface RoomPanelProps {
   onCreateRoom: () => void;
   onJoinRoom: () => void;
   onSelectCharacter: (characterId: CharacterId) => void;
+  onSubmitSetupChoice: (choiceKey: 'ccMissionTarget', targetPlayerId: PlayerId) => void;
   onSetReady: (ready: boolean) => void;
   onStartGame: () => void;
 }
@@ -34,6 +36,15 @@ export function RoomPanel(props: RoomPanelProps) {
   const { room, session } = props;
   const mySeat = room?.seats.find((seat) => seat.userId === session?.userId);
   const isOwner = room?.ownerUserId === session?.userId;
+  const game = room?.game;
+  const me = game?.players.find((player) => player.userId === session?.userId);
+  const ccSetupAction = game?.pendingActionsForMe.find((action) => action.kind === 'characterSkillWindow' && action.context.type === 'generic' && action.context.data?.choiceKey === 'ccMissionTarget');
+  const setupTargets = useMemo(
+    () => game?.players.filter((player) => player.aliveState === 'alive' && player.playerId !== me?.playerId) ?? [],
+    [game, me],
+  );
+  const [ccTarget, setCcTarget] = useState('');
+  const selectedCcTarget = ccTarget || setupTargets[0]?.playerId || '';
 
   return (
     <section className="card">
@@ -64,30 +75,63 @@ export function RoomPanel(props: RoomPanelProps) {
           )}
           {room.status === 'playing' && room.game?.status === 'setup' && (
             <div className="character-picker">
-              <h3>选择角色</h3>
-              <p className="muted">请选择系统发给你的 2 个候选之一；其他玩家只能看到你是否已选择，看不到具体角色。</p>
-              <div className="selection-progress">
-                {room.seats.map((seat) => (
-                  <span className={`selection-chip ${seat.characterSelected ? 'done' : ''}`} key={seat.userId}>
-                    {seat.displayName}：{seat.characterSelected ? '已选择' : '等待选择'}
-                  </span>
-                ))}
-              </div>
-              <div className="character-choice-grid">
-                {(mySeat?.characterOptions ?? []).map((character) => (
-                  <button
-                    className={`character-choice ${mySeat?.characterSelected ? 'locked' : ''}`}
-                    disabled={Boolean(mySeat?.characterSelected)}
-                    key={character.characterId}
-                    onClick={() => props.onSelectCharacter(character.characterId)}
-                    type="button"
-                  >
-                    <img src={character.imageUrl} alt={character.name} />
-                    <span>{character.name}</span>
-                    <small>{mySeat?.characterSelected ? '已提交选择' : character.visibility === 'hidden' ? '隐藏角色' : '公开角色'}</small>
-                  </button>
-                ))}
-              </div>
+              <h3>{game?.setupState?.step === 'openingOptions' ? '开局选项' : '选择角色'}</h3>
+              {game?.setupState?.step === 'openingOptions' ? (
+                <>
+                  <p className="muted">选角已完成，正在处理开局指定目标等私密选项。其他玩家只能看到进度，看不到目标。</p>
+                  <div className="selection-progress">
+                    {room.seats.map((seat) => {
+                      const playerId = seat.playerId;
+                      const required = Boolean(playerId && game.setupState?.requiredPlayerIds.includes(playerId));
+                      const done = Boolean(playerId && game.setupState?.completedPlayerIds.includes(playerId));
+                      return (
+                        <span className={`selection-chip ${!required || done ? 'done' : ''}`} key={seat.userId}>
+                          {seat.displayName}：{required ? (done ? '已提交开局选项' : '等待开局选项') : '无需开局选项'}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {ccSetupAction && (
+                    <div className="subcard action-focus">
+                      <h4>C.C 机密任务目标</h4>
+                      <p className="muted">请选择一名其他玩家。该目标只会显示在你的私人记录中。</p>
+                      <label>
+                        指定目标
+                        <select value={selectedCcTarget} onChange={(event) => setCcTarget(event.target.value)}>
+                          {setupTargets.map((player) => <option key={player.playerId} value={player.playerId}>{player.displayName}</option>)}
+                        </select>
+                      </label>
+                      <button className="action-pulse" disabled={!selectedCcTarget} onClick={() => props.onSubmitSetupChoice('ccMissionTarget', selectedCcTarget as PlayerId)}>提交目标</button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="muted">请选择系统发给你的 2 个候选之一；其他玩家只能看到你是否已选择，看不到具体角色。</p>
+                  <div className="selection-progress">
+                    {room.seats.map((seat) => (
+                      <span className={`selection-chip ${seat.characterSelected ? 'done' : ''}`} key={seat.userId}>
+                        {seat.displayName}：{seat.characterSelected ? '已选择' : '等待选择'}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="character-choice-grid">
+                    {(mySeat?.characterOptions ?? []).map((character) => (
+                      <button
+                        className={`character-choice ${mySeat?.characterSelected ? 'locked' : ''}`}
+                        disabled={Boolean(mySeat?.characterSelected)}
+                        key={character.characterId}
+                        onClick={() => props.onSelectCharacter(character.characterId)}
+                        type="button"
+                      >
+                        <img src={character.imageUrl} alt={character.name} />
+                        <span>{character.name}</span>
+                        <small>{mySeat?.characterSelected ? '已提交选择' : character.visibility === 'hidden' ? '隐藏角色' : '公开角色'}</small>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
           <div className="actions">

@@ -69,3 +69,8 @@
 - 选角实现细节：`RoomSeat.characterOptionIds/selectedCharacterId` 为服务端权威状态，`RoomSeatView.characterOptions` 只下发给本人，`characterSelected` 公开显示选角进度；全员选择后才填充 `Player.character*` 并进入 `VictoryDeclareWindow`。
 - 角色池限制说明：MVP 角色池当前只有 10 个；4-5 人局可满足每人 2 个全局互不重复候选，6-8 人局暂自动降级为每人 1 个候选，以维持 4-8 人局可开。扩充到 16+ 角色后应恢复 6-8 人每人 2 选。
 - 当前验证结果更新：私密选角改动后 `npm run typecheck`、`npm test`（3 个测试文件、66 个测试）、`npm run build` 均通过。
+
+
+## 2026-05-20 自动提取
+- 用户要求试探的信息和结果默认只有试探者本人知道，不应在公屏显示。
+- 用户要求传递的情报的真假只有传递者知道，只有当对方接收后才能在公屏宣布真假。
