@@ -23,6 +23,34 @@ export const MVP_CHARACTER_POOL: CharacterDefinition[] = [
   { characterId: 'char_020_gasai_yuno' as CharacterId, name: '我妻由乃', visibility: 'public', gender: 'female', skillIds: ['beng_huai', 'xin_sheng'], imageUrl: '/characters/我妻由乃.png', mvpImplemented: true },
 ];
 
+export const characterDefinitionById = (characterId: CharacterId): CharacterDefinition | undefined =>
+  MVP_CHARACTER_POOL.find((item) => item.characterId === characterId);
+
+const shuffledCharacters = (): CharacterDefinition[] => {
+  const items = [...MVP_CHARACTER_POOL];
+  for (let index = items.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [items[index], items[swapIndex]] = [items[swapIndex]!, items[index]!];
+  }
+  return items;
+};
+
+export const dealCharacterOptions = (playerCount: number, optionsPerPlayer = 2): CharacterId[][] => {
+  const needed = playerCount * optionsPerPlayer;
+  if (needed > MVP_CHARACTER_POOL.length) throw new Error('MVP character pool is too small for private options');
+
+  const shuffled = shuffledCharacters();
+  const result: CharacterId[][] = [];
+  for (let playerIndex = 0; playerIndex < playerCount; playerIndex += 1) {
+    result.push(
+      shuffled
+        .slice(playerIndex * optionsPerPlayer, (playerIndex + 1) * optionsPerPlayer)
+        .map((character) => character.characterId),
+    );
+  }
+  return result;
+};
+
 export const assignMvpCharacters = (playerCount: number, preferredIds: CharacterId[] = []): CharacterDefinition[] => {
   if (playerCount > MVP_CHARACTER_POOL.length) throw new Error('MVP character pool is too small');
 
@@ -30,7 +58,7 @@ export const assignMvpCharacters = (playerCount: number, preferredIds: Character
   const used = new Set<CharacterId>();
 
   for (const preferredId of preferredIds) {
-    const character = MVP_CHARACTER_POOL.find((item) => item.characterId === preferredId);
+    const character = characterDefinitionById(preferredId);
     if (!character || used.has(character.characterId)) continue;
     assigned.push(character);
     used.add(character.characterId);

@@ -11,8 +11,8 @@ import type {
   RoomView,
   SystemHintView,
   UserId,
+  CharacterId,
 } from '@wujian/shared';
-import { roomToSeatViews } from '@wujian/shared';
 import { MVP_CHARACTER_POOL } from '../engine/character-registry.js';
 import { getRegularSkillViews, getSkillViews } from '../engine/skill-registry.js';
 
@@ -214,26 +214,42 @@ export const toPublicGameView = (state: GameState, viewerUserId?: UserId): Publi
 };
 
 export const toRoomView = (room: GameRoom, viewerUserId?: UserId): RoomView => {
-  const characterNameById = new Map(MVP_CHARACTER_POOL.map((character) => [character.characterId, character.name]));
+  const characterById = new Map(MVP_CHARACTER_POOL.map((character) => [character.characterId, character]));
+  const toChoice = (characterId: CharacterId) => {
+    const character = characterById.get(characterId);
+    return character
+      ? {
+        characterId: character.characterId,
+        name: character.name,
+        visibility: character.visibility,
+        gender: character.gender,
+        imageUrl: character.imageUrl,
+        skillIds: character.skillIds,
+      }
+      : undefined;
+  };
+
   const view: RoomView = {
     roomId: room.roomId,
     status: room.status,
     ownerUserId: room.ownerUserId,
-    seats: roomToSeatViews(room).map((seat) => {
-      const characterPreferenceName = seat.characterPreferenceId ? characterNameById.get(seat.characterPreferenceId) : undefined;
+    seats: room.seats.map((seat) => {
+      const ownOptions = seat.userId === viewerUserId
+        ? seat.characterOptionIds?.map((id) => toChoice(id)).filter((choice): choice is NonNullable<typeof choice> => Boolean(choice))
+        : undefined;
       return {
-        ...seat,
-        ...(characterPreferenceName ? { characterPreferenceName } : {}),
+        seatIndex: seat.seatIndex,
+        userId: seat.userId,
+        ...(seat.playerId ? { playerId: seat.playerId } : {}),
+        displayName: seat.displayName,
+        ready: seat.ready,
+        connected: seat.connected,
+        isOwner: seat.userId === room.ownerUserId,
+        characterSelected: Boolean(seat.selectedCharacterId),
+        ...(ownOptions && ownOptions.length > 0 ? { characterOptions: ownOptions } : {}),
       };
     }),
-    availableCharacters: MVP_CHARACTER_POOL.map((character) => ({
-      characterId: character.characterId,
-      name: character.name,
-      visibility: character.visibility,
-      gender: character.gender,
-      imageUrl: character.imageUrl,
-      skillIds: character.skillIds,
-    })),
+    availableCharacters: [],
   };
 
   if (room.game) {

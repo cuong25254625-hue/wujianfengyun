@@ -26,7 +26,10 @@ export interface RoomSeat {
   displayName: string;
   ready: boolean;
   connected: boolean;
+  /** @deprecated 旧版大厅预选字段，保留用于兼容旧视图；新流程使用开局后私密候选。 */
   characterPreferenceId?: CharacterId;
+  characterOptionIds?: CharacterId[];
+  selectedCharacterId?: CharacterId;
 }
 
 export interface GameRoom {

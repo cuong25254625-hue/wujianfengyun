@@ -8,6 +8,7 @@ import {
   type GamePhase,
   type GameRoom,
   type GameState,
+  type CharacterId,
   type InfoCard,
   type InfoId,
   type PendingAction,
@@ -24,7 +25,7 @@ import {
   isSupportedPlayerCount,
   ok,
 } from '@wujian/shared';
-import { assignMvpCharacters } from '../engine/character-registry.js';
+import { characterDefinitionById, dealCharacterOptions } from '../engine/character-registry.js';
 import { assignIdentities } from '../engine/identity-engine.js';
 import { createEventId, createInfoId, createPendingActionId, createPlayerId } from '../util/id.js';
 import { checkMission, markDeathDelayMissions, checkDeathDelayVictories } from '../engine/mission-engine.js';
@@ -79,15 +80,25 @@ export class GameRoomRuntime {
   }
 
   selectCharacter(userId: UserId, characterId: string): DomainResult<void> {
-    if (this.room.status !== 'lobby') return err('room.alreadyStarted', '游戏已经开始，不能再更换角色');
+    const game = this.room.game;
+    if (this.room.status !== 'playing' || !game || game.status !== 'setup') {
+      return err('character.invalidPhase', '只能在开局选角阶段选择角色');
+    }
+
     const seat = this.room.seats.find((item) => item.userId === userId);
     if (!seat) return err('room.notJoined', '你还未加入房间');
-    const duplicate = this.room.seats.find((item) => item.userId !== userId && item.characterPreferenceId === characterId);
-    if (duplicate) return err('character.taken', '该角色已被其他玩家预选');
-    const character = assignMvpCharacters(8).find((item) => item.characterId === characterId);
+    if (seat.selectedCharacterId) return err('character.alreadySelected', '你已经选择过角色');
+    if (!seat.characterOptionIds?.includes(characterId as CharacterId)) return err('character.notInOptions', '只能选择系统发给你的候选角色');
+
+    const character = characterDefinitionById(characterId as CharacterId);
     if (!character) return err('character.notFound', '角色不存在');
-    seat.characterPreferenceId = character.characterId;
-    seat.ready = false;
+
+    seat.selectedCharacterId = character.characterId;
+    this.addLog(game, 'character.selectionReady', { player: seat.displayName });
+
+    const allSelected = this.room.seats.every((item) => Boolean(item.selectedCharacterId));
+    if (allSelected) this.finalizeCharacterSelection(game);
+
     this.touch();
     return ok(undefined);
   }
@@ -797,10 +808,8 @@ export class GameRoomRuntime {
     const config = createDefaultGameConfig(playerCount);
     const factions = assignIdentities(playerCount);
     const sortedSeats = [...this.room.seats].sort((left, right) => left.seatIndex - right.seatIndex);
-    const characters = assignMvpCharacters(
-      playerCount,
-      sortedSeats.map((seat) => seat.characterPreferenceId).filter((id): id is NonNullable<typeof id> => Boolean(id)),
-    );
+    const optionsPerPlayer = Math.min(2, Math.floor(10 / playerCount));
+    const characterOptions = dealCharacterOptions(playerCount, optionsPerPlayer);
     const players = {} as GameState['players'];
     const now = Date.now();
     const events: EventEnvelope<GameEvent>[] = [];
@@ -821,10 +830,11 @@ export class GameRoomRuntime {
 
     sortedSeats.forEach((seat, index) => {
       const playerId = createPlayerId();
-      const character = characters[index];
-      if (!character) throw new Error('missing MVP character assignment');
-
       seat.playerId = playerId;
+      seat.characterOptionIds = characterOptions[index] ?? [];
+      delete seat.selectedCharacterId;
+      delete seat.characterPreferenceId;
+
       const player: Player = {
         playerId,
         userId: seat.userId,
@@ -832,12 +842,9 @@ export class GameRoomRuntime {
         seatIndex: seat.seatIndex,
         faction: factions[index] ?? 'white',
         identityRevealed: false,
-        characterId: character.characterId,
-        characterName: character.name,
-        characterImageUrl: character.imageUrl,
-        characterVisibility: character.visibility,
-        characterRevealed: character.visibility === 'public',
-        gender: character.gender,
+        characterVisibility: 'public',
+        characterRevealed: false,
+        gender: 'unknown',
         aliveState: 'alive',
         falseInfoLimit: config.falseInfoLimitDefault,
         infoIds: [],
@@ -855,44 +862,21 @@ export class GameRoomRuntime {
       };
       players[playerId] = player;
       appendEvent({ type: 'IdentityAssigned', playerId, faction: player.faction }, events.length);
-      appendEvent(
-        {
-          type: 'CharacterAssigned',
-          playerId,
-          characterId: character.characterId,
-          characterName: character.name,
-          imageUrl: character.imageUrl,
-          visibility: character.visibility,
-          gender: character.gender,
-        },
-        events.length,
-      );
     });
-
-    const activePlayer = sortedSeats[0]?.playerId;
-    appendEvent(
-      {
-        type: 'PhaseChanged',
-        from: 'Setup',
-        to: 'VictoryDeclareWindow',
-        context: activePlayer ? { type: 'activeTurn', activePlayerId: activePlayer } : { type: 'none' },
-      },
-      events.length,
-    );
 
     publicLog.push(
       { id: `log_${now}_started`, messageKey: 'game.started', params: { playerCount }, createdAt: now },
-      { id: `log_${now}_characters`, messageKey: 'game.mvpCharactersAssigned', params: { characterCount: characters.length }, createdAt: now + 1 },
+      { id: `log_${now}_select`, messageKey: 'game.characterSelectionStarted', params: { optionsPerPlayer }, createdAt: now + 1 },
     );
 
     const pendingActions = {} as GameState['pendingActions'];
     const state: GameState = {
       roomId: this.room.roomId,
       config,
-      status: 'running',
+      status: 'setup',
       players,
       turn: { roundNumber: 1, activeSeatIndex: 0, turnSerial: 1 },
-      phase: { phase: 'VictoryDeclareWindow', enteredAtVersion: events.length - 1, context: activePlayer ? { type: 'activeTurn', activePlayerId: activePlayer } : { type: 'none' } },
+      phase: { phase: 'Setup', enteredAtVersion: events.length - 1, context: { type: 'none' } },
       infoCards: {},
       eventQueue: events,
       pendingActions,
@@ -902,9 +886,40 @@ export class GameRoomRuntime {
       winState: { finished: false },
       version: events.length,
     };
-    const initAliveIds = Object.values(state.players).filter((player) => player.aliveState === 'alive').map((player) => player.playerId);
-    this.openPendingAction(state, 'victoryDeclareWindow', initAliveIds, { type: 'victory', candidates: [] });
     return state;
+  }
+
+  private finalizeCharacterSelection(game: GameState): void {
+    const sortedSeats = [...this.room.seats].sort((left, right) => left.seatIndex - right.seatIndex);
+    for (const seat of sortedSeats) {
+      if (!seat.playerId || !seat.selectedCharacterId) continue;
+      const player = game.players[seat.playerId];
+      const character = characterDefinitionById(seat.selectedCharacterId);
+      if (!player || !character) continue;
+
+      player.characterId = character.characterId;
+      player.characterName = character.name;
+      player.characterImageUrl = character.imageUrl;
+      player.characterVisibility = character.visibility;
+      player.characterRevealed = character.visibility === 'public';
+      player.gender = character.gender;
+      this.appendEvent(game, {
+        type: 'CharacterAssigned',
+        playerId: player.playerId,
+        characterId: character.characterId,
+        characterName: character.name,
+        imageUrl: character.imageUrl,
+        visibility: character.visibility,
+        gender: character.gender,
+      });
+    }
+
+    const activePlayer = sortedSeats[0]?.playerId;
+    game.status = 'running';
+    this.addLog(game, 'game.mvpCharactersAssigned', { characterCount: sortedSeats.length });
+    const initAliveIds = Object.values(game.players).filter((player) => player.aliveState === 'alive').map((player) => player.playerId);
+    this.openPendingAction(game, 'victoryDeclareWindow', initAliveIds, { type: 'victory', candidates: this.victoryCandidateIds(game) });
+    this.enterPhase(game, 'VictoryDeclareWindow', activePlayer ? { type: 'activeTurn', activePlayerId: activePlayer } : { type: 'none' });
   }
 
   private openPendingAction(

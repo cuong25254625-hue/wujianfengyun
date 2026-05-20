@@ -60,28 +60,33 @@ export function RoomPanel(props: RoomPanelProps) {
           <p>当前房间：<strong>{room.roomId}</strong></p>
           <p>状态：{roomStatusLabel[room.status] ?? room.status}</p>
           {room.status === 'lobby' && (
+            <p className="muted">角色将在房主开始游戏后由系统私密发放：每名玩家随机获得 2 个互不重复的候选角色。</p>
+          )}
+          {room.status === 'playing' && room.game?.status === 'setup' && (
             <div className="character-picker">
-              <h3>预选角色</h3>
-              <p className="muted">可先选一个想玩的角色；若未选择，开局时系统会自动补位。更换角色会自动取消准备。</p>
+              <h3>选择角色</h3>
+              <p className="muted">请选择系统发给你的 2 个候选之一；其他玩家只能看到你是否已选择，看不到具体角色。</p>
+              <div className="selection-progress">
+                {room.seats.map((seat) => (
+                  <span className={`selection-chip ${seat.characterSelected ? 'done' : ''}`} key={seat.userId}>
+                    {seat.displayName}：{seat.characterSelected ? '已选择' : '等待选择'}
+                  </span>
+                ))}
+              </div>
               <div className="character-choice-grid">
-                {room.availableCharacters.map((character) => {
-                  const selectedBy = room.seats.find((seat) => seat.characterPreferenceId === character.characterId);
-                  const isMine = mySeat?.characterPreferenceId === character.characterId;
-                  const taken = Boolean(selectedBy && selectedBy.userId !== session?.userId);
-                  return (
-                    <button
-                      className={`character-choice ${isMine ? 'selected' : ''}`}
-                      disabled={taken}
-                      key={character.characterId}
-                      onClick={() => props.onSelectCharacter(character.characterId)}
-                      type="button"
-                    >
-                      <img src={character.imageUrl} alt={character.name} />
-                      <span>{character.name}</span>
-                      <small>{taken ? `${selectedBy?.displayName ?? '其他玩家'}已选` : isMine ? '已选择' : character.visibility === 'hidden' ? '隐藏角色' : '公开角色'}</small>
-                    </button>
-                  );
-                })}
+                {(mySeat?.characterOptions ?? []).map((character) => (
+                  <button
+                    className={`character-choice ${mySeat?.characterSelected ? 'locked' : ''}`}
+                    disabled={Boolean(mySeat?.characterSelected)}
+                    key={character.characterId}
+                    onClick={() => props.onSelectCharacter(character.characterId)}
+                    type="button"
+                  >
+                    <img src={character.imageUrl} alt={character.name} />
+                    <span>{character.name}</span>
+                    <small>{mySeat?.characterSelected ? '已提交选择' : character.visibility === 'hidden' ? '隐藏角色' : '公开角色'}</small>
+                  </button>
+                ))}
               </div>
             </div>
           )}

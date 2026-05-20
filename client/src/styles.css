@@ -444,10 +444,33 @@ button:disabled {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.character-choice.selected {
+.character-choice.selected,
+.character-choice.locked {
   border-color: #ffd98e;
   background: rgba(255, 217, 142, 0.16);
   box-shadow: 0 0 0 1px rgba(255, 217, 142, 0.24);
+}
+
+.selection-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.selection-chip {
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: rgba(244, 247, 251, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+}
+
+.selection-chip.done {
+  color: #88f7aa;
+  border-color: rgba(136, 247, 170, 0.32);
+  background: rgba(136, 247, 170, 0.1);
 }
 
 .character-choice:disabled {

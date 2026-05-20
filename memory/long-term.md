@@ -63,5 +63,9 @@
 - 手机端适配阶段优化：增加按钮按压反馈、关键操作按钮脉冲、移动端桌面中心操作区 sticky、触摸尺寸加大和重连 banner；锁定/截获等操作已有更明显反馈，但后续仍可补充 toast 成功提示。
 - 任意回合宣胜基础完成：每轮 `VictoryDeclareWindow` 面向所有存活玩家开放；非当前回合玩家可宣胜或跳过但不推进流程，当前回合玩家跳过才进入技能阶段，避免旁观跳过抢推进权。
 - 白方任务系统 Phase 1 完成：新增 `server/src/engine/mission-engine.ts`，接入 10 个 MVP 角色的简化任务检查、`secretMission` 白方宣胜、任务计数器、死亡延迟任务框架和任务完成私人提示；最终 PK、完整任务还原、C.C 指定目标 UI、拦截型任务仍待做。
-- 角色选择基础完成：大厅新增角色预选，`RoomSeat.characterPreferenceId`、`SelectCharacter` 命令、`RoomView.availableCharacters` 与预选名展示已接入；开局时按玩家预选优先分配，未选者自动补位。正式选角阶段和开局选项仍待完善。
+- 角色选择基础完成：大厅新增角色预选，`RoomSeat.characterPreferenceId`、`SelectCharacter` 命令、`RoomView.availableCharacters` 与预选名展示已接入；开局时按预选优先分配，未选者自动补位。正式选角阶段和开局选项仍待完善。
 - 当前验证结果更新：最近一轮综合改动后 `npm run typecheck`、`npm test`、`npm run build` 均通过；测试覆盖为 3 个测试文件、64 个测试。
+- 角色选择流程修正决策：用户明确要求角色选择应发生在“开始游戏后”，系统从角色池随机给每名玩家候选角色，选择完成前其他玩家不能看到自己选了谁；因此废弃大厅公开预选，改为开局后私密选角阶段。
+- 选角实现细节：`RoomSeat.characterOptionIds/selectedCharacterId` 为服务端权威状态，`RoomSeatView.characterOptions` 只下发给本人，`characterSelected` 公开显示选角进度；全员选择后才填充 `Player.character*` 并进入 `VictoryDeclareWindow`。
+- 角色池限制说明：MVP 角色池当前只有 10 个；4-5 人局可满足每人 2 个全局互不重复候选，6-8 人局暂自动降级为每人 1 个候选，以维持 4-8 人局可开。扩充到 16+ 角色后应恢复 6-8 人每人 2 选。
+- 当前验证结果更新：私密选角改动后 `npm run typecheck`、`npm test`（3 个测试文件、66 个测试）、`npm run build` 均通过。

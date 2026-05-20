@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { GameState, Player } from '@wujian/shared';
+import type { GameRoom, GameState, Player } from '@wujian/shared';
 import { createDefaultGameConfig } from '@wujian/shared';
-import { toPublicGameView } from './public-view.js';
+import { toPublicGameView, toRoomView } from './public-view.js';
 
 const makePlayer = (overrides: Partial<Player>): Player => ({
   playerId: overrides.playerId ?? ('player_a' as Player['playerId']),
@@ -126,5 +126,56 @@ describe('public-view', () => {
     const view = toPublicGameView(state, 'user_b' as Player['userId']);
     expect(view.systemHints.length).toBeGreaterThan(0);
     expect(view.systemHints.map((hint) => `${hint.title} ${hint.message}`).join('\n')).not.toContain('陈永仁');
+  });
+
+  it('only exposes private character options to the owning user during setup selection', () => {
+    const state = createState();
+    state.status = 'setup';
+    state.phase = { phase: 'Setup', enteredAtVersion: 0, context: { type: 'none' } };
+    const room: GameRoom = {
+      roomId: 'ROOM01' as GameRoom['roomId'],
+      status: 'playing',
+      ownerUserId: 'user_a' as Player['userId'],
+      createdAt: 1,
+      updatedAt: 1,
+      game: state,
+      seats: [
+        {
+          seatIndex: 0,
+          userId: 'user_a' as Player['userId'],
+          playerId: 'player_a' as Player['playerId'],
+          displayName: 'A',
+          ready: true,
+          connected: true,
+          characterOptionIds: ['char_001_chen_yong_ren', 'char_004_holmes'] as never,
+          selectedCharacterId: 'char_004_holmes' as never,
+        },
+        {
+          seatIndex: 1,
+          userId: 'user_b' as Player['userId'],
+          playerId: 'player_b' as Player['playerId'],
+          displayName: 'B',
+          ready: true,
+          connected: true,
+          characterOptionIds: ['char_006_naruhodo', 'char_008_jack_the_ripper'] as never,
+        },
+      ],
+    };
+
+    const ownView = toRoomView(room, 'user_a' as Player['userId']);
+    const ownSeat = ownView.seats.find((seat) => seat.userId === 'user_a');
+    const otherSeatForA = ownView.seats.find((seat) => seat.userId === 'user_b');
+    expect(ownSeat?.characterOptions?.map((character) => character.name)).toEqual(['陈永仁', '福尔摩斯']);
+    expect(ownSeat?.characterSelected).toBe(true);
+    expect(otherSeatForA?.characterOptions).toBeUndefined();
+    expect(otherSeatForA?.characterSelected).toBe(false);
+
+    const otherView = toRoomView(room, 'user_b' as Player['userId']);
+    const seatAForB = otherView.seats.find((seat) => seat.userId === 'user_a');
+    const seatBForB = otherView.seats.find((seat) => seat.userId === 'user_b');
+    expect(seatAForB?.characterOptions).toBeUndefined();
+    expect(seatAForB?.characterSelected).toBe(true);
+    expect(JSON.stringify(seatAForB)).not.toContain('福尔摩斯');
+    expect(seatBForB?.characterOptions?.map((character) => character.name)).toEqual(['成步堂龙一', '开膛手杰克']);
   });
 });

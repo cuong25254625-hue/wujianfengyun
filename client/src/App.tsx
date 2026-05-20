@@ -84,7 +84,7 @@ export default function App() {
     client.send({ type: 'playerCommand', roomId: room.roomId, command });
   };
 
-  const inGame = Boolean(room?.game);
+  const inGame = Boolean(room?.game && room.game.status !== 'setup');
 
   return (
     <main className={inGame ? 'in-game-main' : ''}>

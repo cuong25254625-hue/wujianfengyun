@@ -18,6 +18,38 @@ const createStartedRuntime = (playerCount = 4) => {
   }
   const started = runtime.startGame(userId(0));
   expect(started.ok).toBe(true);
+  const fallbackCharacters = MVP_CHARACTER_POOL.slice(0, playerCount);
+  runtime.room.seats.forEach((seat, index) => {
+    const character = fallbackCharacters[index];
+    const player = seat.playerId && runtime.room.game?.players[seat.playerId];
+    if (!character || !seat.playerId || !player) throw new Error(`missing fallback character ${index}`);
+    seat.characterOptionIds = [character.characterId];
+    seat.selectedCharacterId = character.characterId;
+    player.characterId = character.characterId;
+    player.characterName = character.name;
+    player.characterImageUrl = character.imageUrl;
+    player.characterVisibility = character.visibility;
+    player.characterRevealed = character.visibility === 'public';
+    player.gender = character.gender;
+  });
+  if (runtime.room.game) {
+    runtime.room.game.status = 'running';
+    runtime.room.game.phase = { phase: 'VictoryDeclareWindow', enteredAtVersion: runtime.room.game.version, context: { type: 'activeTurn', activePlayerId: playersBySeat(runtime)[0]!.playerId } };
+    const aliveIds = Object.values(runtime.room.game.players).map((player) => player.playerId);
+    runtime.room.game.pendingActions = {
+      [`pending_test_${runtime.room.game.version}`]: {
+        pendingActionId: `pending_test_${runtime.room.game.version}` as never,
+        kind: 'victoryDeclareWindow',
+        phase: 'VictoryDeclareWindow',
+        eligiblePlayerIds: aliveIds,
+        requiredPlayerIds: aliveIds,
+        status: 'open',
+        responses: [],
+        priorityPolicy: runtime.room.game.config.responsePriorityPolicy,
+        context: { type: 'victory', candidates: [] },
+      },
+    } as typeof runtime.room.game.pendingActions;
+  }
   return runtime;
 };
 
@@ -172,35 +204,72 @@ describe('GameRoomRuntime', () => {
   });
 
   describe('setup events', () => {
-    it('records setup events when starting a game', () => {
-      const game = createStartedRoom();
+    it('starts in private character selection setup before opening victory window', () => {
+      const runtime = new GameRoomRuntime('ROOM01' as never, userId(0), '玩家0');
+      for (let index = 1; index < 4; index += 1) {
+        expect(runtime.join({ userId: userId(index), displayName: `玩家${index}` }).ok).toBe(true);
+        expect(runtime.setReady(userId(index), true).ok).toBe(true);
+      }
+
+      const started = runtime.startGame(userId(0));
+      expect(started.ok).toBe(true);
+      const game = runtime.room.game;
       if (!game) throw new Error('game did not start');
 
+      expect(game.status).toBe('setup');
+      expect(game.phase.phase).toBe('Setup');
+      expect(Object.values(game.pendingActions)).toHaveLength(0);
       expect(game.eventQueue.map((event) => event.type)).toEqual([
         'GameStarted',
         'IdentityAssigned',
-        'CharacterAssigned',
         'IdentityAssigned',
-        'CharacterAssigned',
         'IdentityAssigned',
-        'CharacterAssigned',
         'IdentityAssigned',
-        'CharacterAssigned',
-        'PhaseChanged',
       ]);
-      expect(game.version).toBe(game.eventQueue.length);
+
+      expect(runtime.room.seats.every((seat) => seat.characterOptionIds?.length === 2)).toBe(true);
+      for (const seat of runtime.room.seats) {
+        expect(new Set(seat.characterOptionIds).size).toBe(2);
+      }
     });
 
-    it('assigns MVP character placeholders in seat order', () => {
-      const game = createStartedRoom();
-      if (!game) throw new Error('game did not start');
+    it('rejects selecting a character outside own private options', () => {
+      const runtime = new GameRoomRuntime('ROOM01' as never, userId(0), '玩家0');
+      for (let index = 1; index < 4; index += 1) {
+        expect(runtime.join({ userId: userId(index), displayName: `玩家${index}` }).ok).toBe(true);
+        expect(runtime.setReady(userId(index), true).ok).toBe(true);
+      }
+      expect(runtime.startGame(userId(0)).ok).toBe(true);
+      const otherOption = runtime.room.seats[1]?.characterOptionIds?.[0];
+      if (!otherOption) throw new Error('missing option');
 
+      const result = runtime.selectCharacter(userId(0), otherOption);
+      expect(result.ok).toBe(false);
+      expect(errCode(result)).toBe('character.notInOptions');
+    });
+
+    it('finalizes selected characters and opens victory window after everyone chooses', () => {
+      const runtime = new GameRoomRuntime('ROOM01' as never, userId(0), '玩家0');
+      for (let index = 1; index < 4; index += 1) {
+        expect(runtime.join({ userId: userId(index), displayName: `玩家${index}` }).ok).toBe(true);
+        expect(runtime.setReady(userId(index), true).ok).toBe(true);
+      }
+      expect(runtime.startGame(userId(0)).ok).toBe(true);
+      const chosen = runtime.room.seats.map((seat) => seat.characterOptionIds?.[0]);
+      for (let index = 0; index < 4; index += 1) {
+        const option = chosen[index];
+        if (!option) throw new Error('missing option');
+        expect(runtime.selectCharacter(userId(index), option).ok).toBe(true);
+      }
+
+      const game = runtime.room.game;
+      if (!game) throw new Error('game did not start');
       const players = Object.values(game.players).sort((left, right) => left.seatIndex - right.seatIndex);
-      expect(players.map((player) => player.characterName)).toEqual(['陈永仁', '刘建明', '福尔摩斯', '成步堂龙一']);
-      expect(players[0]?.characterVisibility).toBe('hidden');
-      expect(players[0]?.characterRevealed).toBe(false);
-      expect(players[2]?.characterVisibility).toBe('public');
-      expect(players[2]?.characterRevealed).toBe(true);
+      expect(game.status).toBe('running');
+      expect(game.phase.phase).toBe('VictoryDeclareWindow');
+      expect(players.map((player) => player.characterId)).toEqual(chosen);
+      expect(Object.values(game.pendingActions).some((action) => action.kind === 'victoryDeclareWindow' && action.status === 'open')).toBe(true);
+      expect(game.eventQueue.filter((event) => event.type === 'CharacterAssigned')).toHaveLength(4);
     });
   });
 

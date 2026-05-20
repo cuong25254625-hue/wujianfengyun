@@ -77,8 +77,14 @@ export function PlayerList({ room, session, children }: PlayerListProps) {
                   {!seat.connected && <span className="badge danger">断线</span>}
                   <span className={seat.ready ? 'ok' : 'muted'}>{seat.ready ? '已准备' : '未准备'}</span>
                 </div>
-                {!gamePlayer && seat.characterPreferenceName && <p>预选：{seat.characterPreferenceName}</p>}
-                {gamePlayer && (
+                {!gamePlayer && seat.characterSelected !== undefined && <p>{seat.characterSelected ? '已选择角色' : '等待选角'}</p>}
+                {gamePlayer && room.game?.status === 'setup' && (
+                  <>
+                    <p>{seat.characterSelected ? '已选择角色' : '等待选角'}</p>
+                    <p className="muted">角色暂不公开</p>
+                  </>
+                )}
+                {gamePlayer && room.game?.status !== 'setup' && (
                   <>
                     <p>{aliveText(gamePlayer.aliveState)} / {factionText(gamePlayer.revealedFaction)}</p>
                     <p>角色：{gamePlayer.characterName ?? '盖伏'}</p>
