@@ -1,5 +1,5 @@
-import type { CSSProperties, ReactNode } from 'react';
-import type { RoomView, SessionView } from '@wujian/shared';
+import { useState, type CSSProperties, type ReactNode } from 'react';
+import type { RoomView, SessionView, SkillView } from '@wujian/shared';
 
 interface PlayerListProps {
   room: RoomView | undefined;
@@ -26,6 +26,7 @@ export function PlayerList({ room, session, children }: PlayerListProps) {
 
   const total = room.game?.players.length ?? room.seats.length;
   const activeSeatIndex = room.game?.activeSeatIndex;
+  const [skillViewer, setSkillViewer] = useState<{ name: string; characterName: string; skills: SkillView[] }>();
 
   return (
     <section className="table-arena card">
@@ -51,13 +52,24 @@ export function PlayerList({ room, session, children }: PlayerListProps) {
               key={seat.userId}
               style={{ '--seat-angle': `${angle}deg` } as CSSProperties}
             >
-              <div className="seat-card-image">
+              <button
+                className="seat-card-image"
+                type="button"
+                onClick={() => {
+                  const skills = gamePlayer?.characterSkills ?? [];
+                  if (gamePlayer && skills.length > 0) {
+                    setSkillViewer({ name: gamePlayer.displayName, characterName: gamePlayer.characterName ?? '盖伏角色', skills });
+                  }
+                }}
+                disabled={!gamePlayer?.characterSkills?.length}
+                title={gamePlayer?.characterSkills?.length ? '点击查看角色技能' : '角色盖伏或暂无可公开技能'}
+              >
                 {gamePlayer?.characterImageUrl ? <img src={gamePlayer.characterImageUrl} alt={gamePlayer.characterName ?? '角色'} /> : <span className="card-back large">盖伏</span>}
-              </div>
+              </button>
               <div className="seat-card-body">
                 <div className="seat-title">
                   <span>#{seat.seatIndex + 1}</span>
-                  <strong>{seat.displayName}</strong>
+                  <strong>{gamePlayer?.displayName ?? seat.displayName}</strong>
                 </div>
                 <div className="seat-badges">
                   {seat.isOwner && <span className="badge">房主</span>}
@@ -77,6 +89,26 @@ export function PlayerList({ room, session, children }: PlayerListProps) {
           );
         })}
       </div>
+      {skillViewer && (
+        <div className="skill-popover" role="dialog" aria-label="角色技能">
+          <div className="skill-popover-card">
+            <button className="close-button" type="button" onClick={() => setSkillViewer(undefined)}>×</button>
+            <h3>{skillViewer.name}｜{skillViewer.characterName}</h3>
+            <div className="skill-popover-list">
+              {skillViewer.skills.map((skill) => (
+                <article className="skill-card" key={skill.skillId}>
+                  <header>
+                    <strong>{skill.name}</strong>
+                    <span>{skill.timing}</span>
+                  </header>
+                  <p>{skill.description}</p>
+                  {skill.hint && <p className="muted">{skill.hint}</p>}
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

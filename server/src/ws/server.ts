@@ -109,6 +109,22 @@ export class GameWebSocketServer {
         this.broadcastRoom(command.roomId);
         return;
       }
+      case 'UpdateDisplayName': {
+        const runtimeResult = this.rooms.getRuntime(command.roomId);
+        if (!runtimeResult.ok) {
+          this.send(client, { type: 'error', error: runtimeResult.error });
+          return;
+        }
+        const displayName = command.displayName.trim() || '玩家';
+        client.session.displayName = displayName;
+        const result = runtimeResult.value.updateDisplayName(client.session.userId, displayName);
+        if (!result.ok) {
+          this.send(client, { type: 'error', error: result.error });
+          return;
+        }
+        this.broadcastRoom(command.roomId);
+        return;
+      }
       case 'SetReady': {
         const runtimeResult = this.rooms.getRuntime(command.roomId);
         if (!runtimeResult.ok) {

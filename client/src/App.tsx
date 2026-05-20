@@ -41,6 +41,12 @@ export default function App() {
 
   const sendHello = () => client.send({ type: 'hello', displayName });
 
+  const syncDisplayName = () => {
+    const nextName = displayName.trim();
+    if (!room || !nextName) return;
+    client.send({ type: 'roomCommand', command: { type: 'UpdateDisplayName', roomId: room.roomId, displayName: nextName } });
+  };
+
   const createRoom = () => {
     sendHello();
     client.send({ type: 'roomCommand', command: { type: 'CreateRoom', displayName } });
@@ -53,6 +59,7 @@ export default function App() {
 
   const setReady = (ready: boolean) => {
     if (!room) return;
+    syncDisplayName();
     client.send({ type: 'roomCommand', command: { type: 'SetReady', roomId: room.roomId, ready } });
   };
 
@@ -85,6 +92,7 @@ export default function App() {
               roomIdInput={roomIdInput}
               onDisplayNameChange={setDisplayName}
               onRoomIdInputChange={setRoomIdInput}
+              onUpdateDisplayName={syncDisplayName}
               onCreateRoom={createRoom}
               onJoinRoom={joinRoom}
               onSetReady={setReady}

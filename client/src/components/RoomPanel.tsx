@@ -8,6 +8,7 @@ interface RoomPanelProps {
   roomIdInput: string;
   onDisplayNameChange: (value: string) => void;
   onRoomIdInputChange: (value: string) => void;
+  onUpdateDisplayName: () => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
   onSetReady: (ready: boolean) => void;
@@ -43,6 +44,7 @@ export function RoomPanel(props: RoomPanelProps) {
       </label>
       <div className="actions">
         <button onClick={props.onCreateRoom}>创建房间</button>
+        {room && <button onClick={props.onUpdateDisplayName}>同步昵称</button>}
       </div>
       <label>
         房间号

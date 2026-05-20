@@ -50,7 +50,10 @@ export class GameRoomRuntime {
 
   join(input: JoinRoomInput): DomainResult<RoomSeat> {
     const existing = this.room.seats.find((seat) => seat.userId === input.userId);
-    if (existing) return ok(existing);
+    if (existing) {
+      this.updateDisplayName(input.userId, input.displayName);
+      return ok(existing);
+    }
 
     if (this.room.status !== 'lobby') {
       return err('room.alreadyStarted', '游戏已经开始，暂不能加入');
@@ -70,6 +73,22 @@ export class GameRoomRuntime {
     const seat = this.room.seats.find((item) => item.userId === userId);
     if (!seat) return err('room.notJoined', '你还未加入房间');
     seat.ready = ready;
+    this.touch();
+    return ok(undefined);
+  }
+
+  updateDisplayName(userId: UserId, displayName: string): DomainResult<void> {
+    const trimmed = displayName.trim();
+    if (!trimmed) return err('room.invalidName', '昵称不能为空');
+
+    const seat = this.room.seats.find((item) => item.userId === userId);
+    if (!seat) return err('room.notJoined', '你还未加入房间');
+
+    seat.displayName = trimmed;
+    if (this.room.game) {
+      const player = Object.values(this.room.game.players).find((item) => item.userId === userId);
+      if (player) player.displayName = trimmed;
+    }
     this.touch();
     return ok(undefined);
   }

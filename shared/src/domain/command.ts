@@ -75,5 +75,6 @@ export interface PassPendingActionCommand {
 export type RoomClientCommand =
   | { type: 'CreateRoom'; displayName: string }
   | { type: 'JoinRoom'; roomId: RoomId; displayName: string }
+  | { type: 'UpdateDisplayName'; roomId: RoomId; displayName: string }
   | { type: 'SetReady'; roomId: RoomId; ready: boolean }
   | { type: 'StartGame'; roomId: RoomId };

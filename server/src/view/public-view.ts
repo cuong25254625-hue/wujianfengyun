@@ -161,7 +161,7 @@ export const toPublicPlayerView = (state: GameState, playerId: string, viewerUse
     characterVisibility: player.characterVisibility,
     characterRevealed: player.characterRevealed,
     gender: player.gender,
-    ...(characterVisible && !isSelf ? { characterSkills: characterSkillViews(player) } : {}),
+    ...(characterVisible ? { characterSkills: characterSkillViews(player) } : {}),
     ...countInfos(state, playerId),
   };
 

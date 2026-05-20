@@ -384,7 +384,7 @@ button:disabled {
 .in-game-shell .table-arena {
   min-height: 0;
   height: 100%;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .table-center {
@@ -412,6 +412,7 @@ button:disabled {
   min-height: 180px;
   padding: 12px;
   align-content: start;
+  z-index: 3;
 }
 
 .in-game-shell .table-center h2 {
@@ -429,12 +430,15 @@ button:disabled {
 }
 
 .seat-card {
-  --seat-radius: min(28vw, 285px);
+  --seat-radius: min(27vw, 280px);
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 176px;
-  min-height: 250px;
+  width: 220px;
+  min-height: 150px;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  align-items: stretch;
   transform: rotate(var(--seat-angle)) translate(var(--seat-radius)) rotate(calc(-1 * var(--seat-angle))) translate(-50%, -50%);
   border-radius: 16px;
   background: linear-gradient(180deg, rgba(39, 31, 29, 0.96), rgba(13, 16, 27, 0.96));
@@ -445,9 +449,10 @@ button:disabled {
 }
 
 .in-game-shell .seat-card {
-  --seat-radius: min(37vw, 43vh, 470px);
-  width: clamp(118px, 10.2vw, 158px);
+  --seat-radius: min(30vw, 34vh, 390px);
+  width: clamp(180px, 16vw, 230px);
   min-height: 0;
+  grid-template-columns: clamp(58px, 6.2vw, 78px) minmax(0, 1fr);
 }
 
 .seat-card.active-seat {
@@ -470,14 +475,24 @@ button:disabled {
 }
 
 .seat-card-image {
-  height: 116px;
+  min-height: 100%;
   display: grid;
   place-items: center;
+  border: 0;
+  border-radius: 0;
+  padding: 6px;
   background: rgba(0, 0, 0, 0.28);
+  color: inherit;
+  cursor: pointer;
+}
+
+.seat-card-image:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .in-game-shell .seat-card-image {
-  height: clamp(78px, 11vh, 110px);
+  min-height: clamp(86px, 13vh, 118px);
 }
 
 .seat-card-image img {
@@ -502,6 +517,7 @@ button:disabled {
   padding: 7px 8px;
   font-size: 11px;
   line-height: 1.25;
+  min-width: 0;
 }
 
 .seat-title,
@@ -523,8 +539,16 @@ button:disabled {
   margin-bottom: 4px;
 }
 
+.seat-title strong,
+.seat-card-body p {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .in-game-shell .seat-card-body p {
   margin-bottom: 2px;
+  white-space: nowrap;
 }
 
 .seat-skills {
@@ -765,6 +789,48 @@ button:disabled {
   gap: 8px;
 }
 
+.skill-popover {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.34);
+}
+
+.skill-popover-card {
+  position: relative;
+  width: min(520px, 92%);
+  max-height: 72%;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 217, 142, 0.42);
+  background: rgba(13, 16, 27, 0.96);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.48);
+}
+
+.skill-popover-card h3 {
+  padding-right: 34px;
+  color: #ffe5a8;
+}
+
+.skill-popover-list {
+  display: grid;
+  gap: 10px;
+}
+
+.close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 999px;
+}
+
 @media (max-width: 1180px) {
   .game-shell {
     grid-template-columns: 1fr;
@@ -790,7 +856,7 @@ button:disabled {
   }
 
   .in-game-shell .seat-card {
-    --seat-radius: min(36vw, 340px);
+    --seat-radius: min(29vw, 32vh, 330px);
   }
 
   .table-panel {
