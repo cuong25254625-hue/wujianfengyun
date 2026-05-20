@@ -70,7 +70,7 @@ export default function App() {
     <main>
       <header>
         <h1>无间风云 MVP</h1>
-        <p>TypeScript + WebSocket + React 调试版</p>
+        <p>多人在线身份情报对局</p>
       </header>
       <div className="game-shell">
         <aside className="left-panel">

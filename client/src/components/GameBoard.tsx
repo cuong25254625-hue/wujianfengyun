@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { Faction, PlayerCommand, PlayerId, PrivatePlayerView, RoomView, SessionView } from '@wujian/shared';
+import type { Faction, GamePhase, PlayerCommand, PlayerId, PrivatePlayerView, RoomView, SessionView } from '@wujian/shared';
 import { phaseLabel } from '@wujian/shared';
 
 interface GameBoardProps {
@@ -12,6 +12,11 @@ const factionLabel: Record<Faction, string> = {
   red: '红方',
   blue: '蓝方',
   white: '白方',
+};
+
+const victoryReasonLabel: Record<'threeTrueInfo' | 'clearField', string> = {
+  threeTrueInfo: '三张真情报',
+  clearField: '清场',
 };
 
 const hasPrivateInfo = (player: unknown): player is PrivatePlayerView =>
@@ -31,9 +36,9 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
 
   if (!game || !me) {
     return (
-      <section className="card">
-        <h2>对局</h2>
-        <p className="muted">等待房主开始游戏。开局后这里会显示可操作按钮。</p>
+      <section className="card game-card">
+        <h2>对局操作</h2>
+        <p className="muted">等待房主开始游戏。开局后这里会显示流程提示和可操作按钮。</p>
       </section>
     );
   }
@@ -70,39 +75,56 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
     });
   };
 
+  const hasProminentAction = pending || (game.phase.phase === 'TransferDeclare' && isMyTurn);
+
   return (
-    <section className="card highlight">
-      <h2>对局</h2>
-      <div className="table-status">
-        <p>阶段：{phaseLabel[game.phase.phase]}（{game.phase.phase}）</p>
-        <p>第 {game.roundNumber} 轮，当前玩家：<strong>{activePlayer?.displayName ?? `座位 #${game.activeSeatIndex + 1}`}</strong></p>
-        <p>我的身份：<strong>{me.revealedFaction ? factionLabel[me.revealedFaction] : '未知'}</strong></p>
+    <section className="card game-card highlight">
+      <div className="game-card-header">
+        <div>
+          <h2>当前进程</h2>
+          <p className="muted">跟随高亮流程完成本回合操作。</p>
+        </div>
+        <div className="status-strip">
+          <span>第 {game.roundNumber} 轮</span>
+          <span>阶段：<strong>{phaseLabel[game.phase.phase]}</strong></span>
+          <span>当前：<strong>{activePlayer?.displayName ?? `座位 #${game.activeSeatIndex + 1}`}</strong></span>
+          <span>我的身份：<strong>{me.revealedFaction ? factionLabel[me.revealedFaction] : '未知'}</strong></span>
+        </div>
       </div>
+
+      <PhaseProgress phase={game.phase.phase} />
       <SystemHints hints={game.systemHints} />
-      <div className="my-dashboard">
+
+      {game.winner && (
+        <p className="ok win-banner">
+          游戏结束：{factionLabel[game.winner.faction]}胜利（{victoryReasonLabel[game.winner.reason] ?? '达成胜利条件'}）
+        </p>
+      )}
+
+      {currentTransfer && (
+        <div className="subcard transfer-summary">
+          <strong>当前传递</strong>
+          <p>
+            {nameOf(game, currentTransfer.fromPlayerId)} → {nameOf(game, currentTransfer.targetPlayerId)}，情报：{currentTransfer.declaredTruth === 'true' ? '真情报' : '假情报'}
+            {currentTransfer.finalReceiverPlayerId ? `，最终接收者：${nameOf(game, currentTransfer.finalReceiverPlayerId)}` : ''}
+            {currentTransfer.forcedReceive ? '，已锁定必须接收' : ''}
+          </p>
+        </div>
+      )}
+
+      <div className="my-dashboard compact-dashboard">
         <div className="my-character">
           {me.characterImageUrl && <img src={me.characterImageUrl} alt={me.characterName ?? '角色'} />}
           <p>我的角色：<strong>{me.characterName ?? '未分配'}</strong>{me.characterVisibility ? `（${me.characterVisibility === 'hidden' ? '隐藏' : '公开'}）` : ''}</p>
         </div>
         {hasPrivateInfo(me) && <SkillBook skills={me.ownSkills} />}
       </div>
-      {game.winner && <p className="ok">游戏结束：{factionLabel[game.winner.faction]}胜利（{game.winner.reason}）</p>}
-
-      {currentTransfer && (
-        <div className="subcard">
-          <strong>当前传递</strong>
-          <p>
-            {nameOf(game, currentTransfer.fromPlayerId)} → {nameOf(game, currentTransfer.targetPlayerId)}，情报：{currentTransfer.declaredTruth === 'true' ? '真' : '假'}
-            {currentTransfer.finalReceiverPlayerId ? `，最终接收者：${nameOf(game, currentTransfer.finalReceiverPlayerId)}` : ''}
-            {currentTransfer.forcedReceive ? '，已锁定' : ''}
-          </p>
-        </div>
-      )}
 
       <div className="actions-panel">
         {game.phase.phase === 'VictoryDeclareWindow' && pending && (
-          <div className="subcard">
+          <div className="subcard action-focus">
             <h3>宣胜窗口</h3>
+            <p className="muted">如果已经满足胜利条件，可以在技能阶段开始前宣胜；否则跳过。</p>
             <div className="actions">
               <button onClick={() => declareVictory('threeTrueInfo')}>三真宣胜</button>
               <button onClick={() => declareVictory('clearField')}>清场宣胜</button>
@@ -112,8 +134,9 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
         )}
 
         {game.phase.phase === 'SkillWindow' && pending && isMyTurn && (
-          <div className="subcard">
+          <div className="subcard action-focus">
             <h3>技能阶段</h3>
+            <p className="muted">可以使用试探或合适的人物技能；完成后进入传递阶段。</p>
             <label>
               试探目标
               <select value={selectedProbeTarget} onChange={(event) => setProbeTarget(event.target.value)}>
@@ -136,8 +159,9 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
         )}
 
         {game.phase.phase === 'TransferDeclare' && isMyTurn && (
-          <div className="subcard">
+          <div className="subcard action-focus">
             <h3>传递阶段</h3>
+            <p className="muted">选择一名存活玩家，并声明这张情报是真还是假。</p>
             <label>
               接收目标
               <select value={selectedTransferTarget} onChange={(event) => setTransferTarget(event.target.value)}>
@@ -156,8 +180,9 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
         )}
 
         {game.phase.phase === 'ReactionWindow' && pending && currentTransfer && (
-          <div className="subcard">
+          <div className="subcard action-focus">
             <h3>响应窗口</h3>
+            <p className="muted">符合条件的玩家可以锁定或截获；不响应则等待其他玩家。</p>
             <div className="actions">
               {currentTransfer.fromPlayerId === me.playerId && (
                 <button onClick={() => onPlayerCommand({ type: 'UseLock', playerId: me.playerId, transferId: currentTransfer.transferId, targetPlayerId: currentTransfer.targetPlayerId })}>锁定原接收者</button>
@@ -171,8 +196,9 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
         )}
 
         {game.phase.phase === 'ReceiveDecision' && currentTransfer && (currentTransfer.finalReceiverPlayerId ?? currentTransfer.targetPlayerId) === me.playerId && (
-          <div className="subcard">
+          <div className="subcard action-focus">
             <h3>接收/拒收</h3>
+            <p className="muted">接收则情报归你；拒收则退回传递者。被锁定时不能拒收。</p>
             <div className="actions">
               <button onClick={() => onPlayerCommand({ type: 'ReceiveInfo', playerId: me.playerId, transferId: currentTransfer.transferId, decision: 'receive' })}>接收</button>
               <button disabled={currentTransfer.forcedReceive} onClick={() => onPlayerCommand({ type: 'ReceiveInfo', playerId: me.playerId, transferId: currentTransfer.transferId, decision: 'reject' })}>拒收</button>
@@ -180,8 +206,22 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
           </div>
         )}
 
-        <div className="subcard">
-          <h3>人物技能</h3>
+        {game.phase.phase === 'DyingWindow' && pending && (
+          <div className="subcard danger action-focus">
+            <h3>濒死阶段</h3>
+            <p>可先尝试濒死人物技能；若无法解除濒死，再点击结算死亡。</p>
+            <div className="actions">
+              {me.characterId === 'char_001_chen_yong_ren' && <button onClick={() => useCharacterSkill('jiu_ji')}>就计返还</button>}
+              {me.characterId === 'char_020_gasai_yuno' && <button onClick={() => useCharacterSkill('xin_sheng')}>新生</button>}
+              <button onClick={pass}>结算死亡</button>
+            </div>
+          </div>
+        )}
+
+        {!hasProminentAction && !game.winner && <p className="muted wait-tip">当前无需你操作，请观察牌桌和日志。</p>}
+
+        <details className="subcard compact-details">
+          <summary>人物技能操作</summary>
           <SkillSelectors
             aliveTargets={aliveTargets}
             deadTargets={deadTargets}
@@ -205,22 +245,8 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
             {me.characterId === 'char_016_cc' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('shou_hu')}>守护</button>}
             {me.characterId === 'char_020_gasai_yuno' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('beng_huai', selectedSkillTarget)}>崩坏</button>}
           </div>
-        </div>
-
-        {game.phase.phase === 'DyingWindow' && pending && (
-          <div className="subcard danger">
-            <h3>濒死阶段</h3>
-            <p>可先尝试濒死人物技能；若无法解除濒死，再点击结算死亡。</p>
-            <div className="actions">
-              {me.characterId === 'char_001_chen_yong_ren' && <button onClick={() => useCharacterSkill('jiu_ji')}>就计返还</button>}
-              {me.characterId === 'char_020_gasai_yuno' && <button onClick={() => useCharacterSkill('xin_sheng')}>新生</button>}
-              <button onClick={pass}>结算死亡</button>
-            </div>
-          </div>
-        )}
+        </details>
       </div>
-
-      {!pending && !isMyTurn && <p className="muted">等待其他玩家操作。</p>}
     </section>
   );
 }
@@ -290,9 +316,9 @@ function SystemHints({ hints }: { hints: NonNullable<RoomView['game']>['systemHi
 function SkillBook({ skills }: { skills: PrivatePlayerView['ownSkills'] }) {
   if (skills.length === 0) return <p className="muted">暂无技能说明。</p>;
   return (
-    <section className="skill-book">
-      <h3>我的技能</h3>
-      <div className="skill-list">
+    <details className="skill-book compact-details">
+      <summary>我的技能（{skills.length}）</summary>
+      <div className="skill-list compact-skill-list">
         {skills.map((skill) => (
           <article className={`skill-card ${skill.usable ? 'usable' : ''}`} key={skill.skillId}>
             <header>
@@ -304,7 +330,35 @@ function SkillBook({ skills }: { skills: PrivatePlayerView['ownSkills'] }) {
           </article>
         ))}
       </div>
-    </section>
+    </details>
+  );
+}
+
+const phaseSteps: Array<{ key: string; label: string; phases: GamePhase[] }> = [
+  { key: 'victory', label: '宣胜', phases: ['VictoryDeclareWindow'] },
+  { key: 'skill', label: '技能', phases: ['SkillWindow'] },
+  { key: 'transfer', label: '传递', phases: ['TransferDeclare'] },
+  { key: 'reaction', label: '响应', phases: ['ReactionWindow'] },
+  { key: 'receive', label: '接收', phases: ['ReceiveDecision'] },
+  { key: 'settle', label: '结算', phases: ['InfoSettle'] },
+  { key: 'dying', label: '生死', phases: ['DyingWindow', 'DeathSettle'] },
+  { key: 'end', label: '下一回合', phases: ['TurnEnd', 'GameOver'] },
+];
+
+function PhaseProgress({ phase }: { phase: GamePhase }) {
+  const activeIndex = phaseSteps.findIndex((step) => step.phases.includes(phase));
+  return (
+    <div className="phase-track" aria-label="对局流程">
+      {phaseSteps.map((step, index) => (
+        <div
+          className={`phase-step ${index === activeIndex ? 'active' : ''} ${activeIndex > index ? 'done' : ''}`}
+          key={step.key}
+        >
+          <span>{index + 1}</span>
+          <strong>{step.label}</strong>
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -14,6 +14,19 @@ interface RoomPanelProps {
   onStartGame: () => void;
 }
 
+const connectionLabel: Record<string, string> = {
+  connecting: '连接中',
+  open: '已连接',
+  closed: '已断开',
+  error: '连接异常',
+};
+
+const roomStatusLabel: Record<string, string> = {
+  lobby: '等待开局',
+  playing: '游戏中',
+  finished: '已结束',
+};
+
 export function RoomPanel(props: RoomPanelProps) {
   const { room, session } = props;
   const mySeat = room?.seats.find((seat) => seat.userId === session?.userId);
@@ -22,7 +35,7 @@ export function RoomPanel(props: RoomPanelProps) {
   return (
     <section className="card">
       <h2>房间</h2>
-      <p className={`connection-status ${props.connectionStatus}`}>连接状态：{props.connectionStatus}</p>
+      <p className={`connection-status ${props.connectionStatus}`}>连接状态：{connectionLabel[props.connectionStatus] ?? props.connectionStatus}</p>
       {props.connectionStatus !== 'open' && <p className="hint">如果创建房间无响应，请确认后端 WebSocket 服务正在监听 8787 端口。</p>}
       <label>
         昵称
@@ -41,7 +54,7 @@ export function RoomPanel(props: RoomPanelProps) {
       {room && (
         <div className="room-meta">
           <p>当前房间：<strong>{room.roomId}</strong></p>
-          <p>状态：{room.status}</p>
+          <p>状态：{roomStatusLabel[room.status] ?? room.status}</p>
           <div className="actions">
             <button onClick={() => props.onSetReady(!mySeat?.ready)}>{mySeat?.ready ? '取消准备' : '准备'}</button>
             {isOwner && <button onClick={props.onStartGame}>开始游戏</button>}

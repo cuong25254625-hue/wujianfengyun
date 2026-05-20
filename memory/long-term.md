@@ -40,3 +40,8 @@
 - 部署优化决策：用户认为手工部署太麻烦，已选择“一键脚本”方案，并要求预留 HTTPS；部署入口统一改为 Nginx `/ws` 反代，前端生产配置写入 `client/.env.production`，后续域名证书用 Certbot 升级到 HTTPS/WSS。
 - 一键部署工具新增：`deploy/install.sh` 用于首次部署，`deploy/update.sh` 用于后续拉取更新，`deploy/status.sh` 用于诊断 OS/Node/Git/构建产物/systemd/Nginx/端口/日志，`deploy/README.md` 记录脚本用法和常见问题。
 - 部署脚本默认行为：项目目录 `/opt/wujianfengyun`、服务名 `wujianfengyun-server`、后端端口 `8787`、Nginx 托管 `client/dist` 并代理 `/ws -> 127.0.0.1:8787`；IP 测试使用 `--https off`，域名默认预留 `wss://域名/ws`。
+- 一键部署 typecheck 修复：服务器新拉取仓库后 `client` typecheck 可能先于 `shared` 构建，导致 `@wujian/shared` 无可用 `dist/*.d.ts` 而退化成 any，出现 RoomPanel/GameBoard 等 26 个隐式 any 类型错误；已将根 `npm run typecheck` 调整为先执行 `npm --workspace @wujian/shared run build`，再执行全 workspaces typecheck。
+- GitHub 同步记录：部署 typecheck 顺序修复已提交并推送到 `main`，提交 `aca8972 Fix deployment typecheck ordering`。
+- UI 第二轮优化决策：用户反馈页面元素太多、日志英文多、系统推进不明显；改为以 `GameBoard` 中文流程条 + 系统提示作为主视觉，降低人物技能和技能说明的常驻展示密度。
+- 日志策略决策：不改服务端 publicLog 协议，先在 `client/src/components/LogPanel.tsx` 用客户端字典把 messageKey/params 转为中文自然句，避免显示 `transfer.declared` 和原始 JSON。
+- 本轮 UI 改动：新增流程条、状态条、当前操作高亮卡片、折叠人物技能操作、折叠我的技能、中文连接/房间状态、中文胜利原因和中文日志格式化；验证 `npm run typecheck`、`npm test`、`npm run build` 通过。
