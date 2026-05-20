@@ -72,23 +72,29 @@ export default function App() {
         <h1>无间风云 MVP</h1>
         <p>TypeScript + WebSocket + React 调试版</p>
       </header>
-      <div className="grid">
-        <RoomPanel
-          room={room}
-          session={session}
-          connectionStatus={connectionStatus}
-          displayName={displayName}
-          roomIdInput={roomIdInput}
-          onDisplayNameChange={setDisplayName}
-          onRoomIdInputChange={setRoomIdInput}
-          onCreateRoom={createRoom}
-          onJoinRoom={joinRoom}
-          onSetReady={setReady}
-          onStartGame={startGame}
-        />
-        <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} />
-        <PlayerList room={room} />
-        <LogPanel room={room} messages={messages} />
+      <div className="game-shell">
+        <aside className="left-panel">
+          <RoomPanel
+            room={room}
+            session={session}
+            connectionStatus={connectionStatus}
+            displayName={displayName}
+            roomIdInput={roomIdInput}
+            onDisplayNameChange={setDisplayName}
+            onRoomIdInputChange={setRoomIdInput}
+            onCreateRoom={createRoom}
+            onJoinRoom={joinRoom}
+            onSetReady={setReady}
+            onStartGame={startGame}
+          />
+        </aside>
+        <section className="table-panel">
+          <PlayerList room={room} session={session} />
+          <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} />
+        </section>
+        <aside className="right-panel">
+          <LogPanel room={room} messages={messages} />
+        </aside>
       </div>
     </main>
   );

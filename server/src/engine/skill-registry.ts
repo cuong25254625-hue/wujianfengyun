@@ -1,0 +1,214 @@
+import type { RegularSkillState, SkillView } from '@wujian/shared';
+
+export interface SkillDefinition {
+  skillId: string;
+  name: string;
+  description: string;
+  timing: string;
+  type: 'regular' | 'character';
+  active: boolean;
+}
+
+export const MVP_SKILL_DEFINITIONS: Record<string, SkillDefinition> = {
+  probe: {
+    skillId: 'probe',
+    name: '试探',
+    description: '选择一名玩家并猜测其阵营，系统按角色修正后给出试探反馈。每名玩家初始 1 次，杀死人可奖励额外次数。',
+    timing: '技能阶段',
+    type: 'regular',
+    active: true,
+  },
+  lock: {
+    skillId: 'lock',
+    name: '锁定',
+    description: '传递响应时由传递者使用，使原接收者必须接收此情报；若有人截获，则截获优先。',
+    timing: '响应窗口',
+    type: 'regular',
+    active: true,
+  },
+  intercept: {
+    skillId: 'intercept',
+    name: '截获',
+    description: '传递响应时非传递者、非原接收者可使用，将传递中的情报改为由自己接收；优先级高于锁定。',
+    timing: '响应窗口',
+    type: 'regular',
+    active: true,
+  },
+  cheng_fu: {
+    skillId: 'cheng_fu',
+    name: '城府',
+    description: '被试探时，MVP 中始终按与试探者同阵营结算，保护自己的真实身份。',
+    timing: '被试探时',
+    type: 'character',
+    active: false,
+  },
+  jiu_ji: {
+    skillId: 'jiu_ji',
+    name: '就计',
+    description: 'MVP 中可在濒死阶段返还一张假情报，尝试解除濒死。',
+    timing: '濒死阶段',
+    type: 'character',
+    active: true,
+  },
+  mie_ji: {
+    skillId: 'mie_ji',
+    name: '灭迹',
+    description: '选择一名其他玩家，MVP 中每局一次，自动优先烧毁其假情报，若无假情报则烧毁真情报。',
+    timing: '技能/响应/濒死阶段',
+    type: 'character',
+    active: true,
+  },
+  zhen_xiang: {
+    skillId: 'zhen_xiang',
+    name: '真相',
+    description: '每当你收到一张真情报，额外获得 1 次试探机会。',
+    timing: '收到真情报后',
+    type: 'character',
+    active: false,
+  },
+  jie_lu: {
+    skillId: 'jie_lu',
+    name: '揭露',
+    description: '传递响应时查看传递中的情报；若为真情报，MVP 中可直接获得该真情报。',
+    timing: '响应窗口',
+    type: 'character',
+    active: true,
+  },
+  yi_yi: {
+    skillId: 'yi_yi',
+    name: '异议',
+    description: '选择一名玩家，MVP 中暂时使其人物技能失效。',
+    timing: '技能阶段',
+    type: 'character',
+    active: true,
+  },
+  ni_zhuan: {
+    skillId: 'ni_zhuan',
+    name: '逆转',
+    description: '选择一名玩家，MVP 中交换双方各 1 张情报。',
+    timing: '技能阶段/传递声明前',
+    type: 'character',
+    active: true,
+  },
+  zhao_zhang: {
+    skillId: 'zhao_zhang',
+    name: '昭彰',
+    description: 'MVP 中作为被动杀人强化挂点：杀死人后可配合惯犯追击。',
+    timing: '杀死人后',
+    type: 'character',
+    active: false,
+  },
+  guan_fan: {
+    skillId: 'guan_fan',
+    name: '惯犯',
+    description: '技能阶段选择一名玩家，MVP 中向其追加一张假情报。',
+    timing: '技能阶段',
+    type: 'character',
+    active: true,
+  },
+  tan_jiu: {
+    skillId: 'tan_jiu',
+    name: '探究',
+    description: 'MVP 中作为查看与情报判断能力的挂点，部分效果已整合到赌博。',
+    timing: '技能阶段',
+    type: 'character',
+    active: false,
+  },
+  du_bo: {
+    skillId: 'du_bo',
+    name: '赌博',
+    description: '选择一名玩家，系统随机给其加入一张真/假情报，用随机结果替代线下左右选择。',
+    timing: '技能阶段/濒死阶段',
+    type: 'character',
+    active: true,
+  },
+  bian_hu: {
+    skillId: 'bian_hu',
+    name: '辩护',
+    description: '选择一名玩家，MVP 中为其烧毁 1 张假情报。',
+    timing: '技能阶段',
+    type: 'character',
+    active: true,
+  },
+  ling_mei: {
+    skillId: 'ling_mei',
+    name: '灵媒',
+    description: 'MVP 中借用第一名死者向目标传递一张情报，濒死遗言控制后续再补。',
+    timing: '技能阶段',
+    type: 'character',
+    active: true,
+  },
+  qi_yue: {
+    skillId: 'qi_yue',
+    name: '契约',
+    description: '传递阶段可指定两个目标，MVP 中通过待传标记串联两次传递。',
+    timing: '传递阶段',
+    type: 'character',
+    active: true,
+  },
+  shou_hu: {
+    skillId: 'shou_hu',
+    name: '守护',
+    description: '技能阶段发动，MVP 中提供一次防御/保护标记。',
+    timing: '技能阶段',
+    type: 'character',
+    active: true,
+  },
+  bing_shan: {
+    skillId: 'bing_shan',
+    name: '冰山',
+    description: 'MVP 中使锁定对你无效或弱化锁定影响。',
+    timing: '被锁定时',
+    type: 'character',
+    active: false,
+  },
+  ke_long: {
+    skillId: 'ke_long',
+    name: '克隆',
+    description: 'MVP 中作为情报同步能力挂点，按当前已实现规则自动触发。',
+    timing: '获得情报后',
+    type: 'character',
+    active: false,
+  },
+  beng_huai: {
+    skillId: 'beng_huai',
+    name: '崩坏',
+    description: '技能阶段选择一名玩家，MVP 中向其追加假情报。',
+    timing: '技能阶段',
+    type: 'character',
+    active: true,
+  },
+  xin_sheng: {
+    skillId: 'xin_sheng',
+    name: '新生',
+    description: '濒死阶段可放弃崩坏并烧毁自己一张假情报，尝试解除濒死。',
+    timing: '濒死阶段',
+    type: 'character',
+    active: true,
+  },
+};
+
+export const getSkillDefinition = (skillId: string): SkillDefinition | undefined => MVP_SKILL_DEFINITIONS[skillId];
+
+export const getSkillViews = (skillIds: string[], usableIds: Set<string> = new Set()): SkillView[] =>
+  skillIds.flatMap((skillId) => {
+    const definition = getSkillDefinition(skillId);
+    if (!definition) return [];
+    return [{ ...definition, usable: usableIds.has(skillId) || definition.active }];
+  });
+
+const toSkillView = (definition: SkillDefinition, usable: boolean, hint?: string): SkillView => ({
+  skillId: definition.skillId,
+  name: definition.name,
+  description: definition.description,
+  timing: definition.timing,
+  type: definition.type,
+  usable,
+  ...(hint ? { hint } : {}),
+});
+
+export const getRegularSkillViews = (regularSkills: RegularSkillState): SkillView[] => [
+  toSkillView(MVP_SKILL_DEFINITIONS.probe!, regularSkills.probeRemaining > 0, `剩余 ${regularSkills.probeRemaining} 次`),
+  toSkillView(MVP_SKILL_DEFINITIONS.lock!, regularSkills.lockRemaining > 0, `剩余 ${regularSkills.lockRemaining} 次`),
+  toSkillView(MVP_SKILL_DEFINITIONS.intercept!, regularSkills.interceptRemaining > 0, `剩余 ${regularSkills.interceptRemaining} 次`),
+];

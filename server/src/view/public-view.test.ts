@@ -70,4 +70,58 @@ describe('public-view', () => {
 
     expect(other?.revealedFaction).toBe('blue');
   });
+
+  it('shows own skills while hiding unrevealed hidden character from others', () => {
+    const state = createState();
+    const playerA = state.players['player_a' as Player['playerId']];
+    if (!playerA) throw new Error('missing player A');
+    playerA.characterId = 'char_001_chen_yong_ren' as NonNullable<Player['characterId']>;
+    playerA.characterName = '陈永仁';
+    playerA.characterImageUrl = '/characters/陈永仁.png';
+    playerA.characterVisibility = 'hidden';
+    playerA.characterRevealed = false;
+
+    const ownView = toPublicGameView(state, 'user_a' as Player['userId']);
+    const ownPlayer = ownView.players.find((player) => player.userId === 'user_a');
+    expect(ownPlayer?.characterName).toBe('陈永仁');
+    expect(ownPlayer?.characterImageUrl).toBe('/characters/陈永仁.png');
+    expect('ownSkills' in (ownPlayer ?? {})).toBe(true);
+    expect((ownPlayer as { ownSkills?: unknown[] }).ownSkills?.length).toBeGreaterThan(0);
+
+    const otherView = toPublicGameView(state, 'user_b' as Player['userId']);
+    const hiddenPlayer = otherView.players.find((player) => player.userId === 'user_a');
+    expect(hiddenPlayer?.characterName).toBeUndefined();
+    expect(hiddenPlayer?.characterImageUrl).toBeUndefined();
+    expect(hiddenPlayer?.characterSkills).toBeUndefined();
+  });
+
+  it('shows public character skills to other players', () => {
+    const state = createState();
+    const playerB = state.players['player_b' as Player['playerId']];
+    if (!playerB) throw new Error('missing player B');
+    playerB.characterId = 'char_004_holmes' as NonNullable<Player['characterId']>;
+    playerB.characterName = '福尔摩斯';
+    playerB.characterImageUrl = '/characters/福尔摩斯.png';
+    playerB.characterVisibility = 'public';
+    playerB.characterRevealed = true;
+
+    const view = toPublicGameView(state, 'user_a' as Player['userId']);
+    const publicPlayer = view.players.find((player) => player.userId === 'user_b');
+
+    expect(publicPlayer?.characterName).toBe('福尔摩斯');
+    expect(publicPlayer?.characterSkills?.map((skill) => skill.name)).toContain('真相');
+  });
+
+  it('builds system hints for the viewer without leaking hidden character names', () => {
+    const state = createState();
+    const playerA = state.players['player_a' as Player['playerId']];
+    if (!playerA) throw new Error('missing player A');
+    playerA.characterId = 'char_001_chen_yong_ren' as NonNullable<Player['characterId']>;
+    playerA.characterName = '陈永仁';
+    playerA.characterVisibility = 'hidden';
+
+    const view = toPublicGameView(state, 'user_b' as Player['userId']);
+    expect(view.systemHints.length).toBeGreaterThan(0);
+    expect(view.systemHints.map((hint) => `${hint.title} ${hint.message}`).join('\n')).not.toContain('陈永仁');
+  });
 });

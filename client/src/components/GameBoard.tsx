@@ -73,16 +73,19 @@ export function GameBoard({ room, session, onPlayerCommand }: GameBoardProps) {
   return (
     <section className="card highlight">
       <h2>对局</h2>
-      <p>阶段：{phaseLabel[game.phase.phase]}（{game.phase.phase}）</p>
-      <p>第 {game.roundNumber} 轮，当前玩家：<strong>{activePlayer?.displayName ?? `座位 #${game.activeSeatIndex + 1}`}</strong></p>
-      <p>我的身份：<strong>{me.revealedFaction ? factionLabel[me.revealedFaction] : '未知'}</strong></p>
-      <div className="my-character">
-        {me.characterImageUrl && <img src={me.characterImageUrl} alt={me.characterName ?? '角色'} />}
-        <p>我的角色：<strong>{me.characterName ?? '未分配'}</strong>{me.characterVisibility ? `（${me.characterVisibility === 'hidden' ? '隐藏' : '公开'}）` : ''}</p>
+      <div className="table-status">
+        <p>阶段：{phaseLabel[game.phase.phase]}（{game.phase.phase}）</p>
+        <p>第 {game.roundNumber} 轮，当前玩家：<strong>{activePlayer?.displayName ?? `座位 #${game.activeSeatIndex + 1}`}</strong></p>
+        <p>我的身份：<strong>{me.revealedFaction ? factionLabel[me.revealedFaction] : '未知'}</strong></p>
       </div>
-      {hasPrivateInfo(me) && (
-        <p>常规技能：试探 {me.regularSkills.probeRemaining} / 锁定 {me.regularSkills.lockRemaining} / 截获 {me.regularSkills.interceptRemaining}</p>
-      )}
+      <SystemHints hints={game.systemHints} />
+      <div className="my-dashboard">
+        <div className="my-character">
+          {me.characterImageUrl && <img src={me.characterImageUrl} alt={me.characterName ?? '角色'} />}
+          <p>我的角色：<strong>{me.characterName ?? '未分配'}</strong>{me.characterVisibility ? `（${me.characterVisibility === 'hidden' ? '隐藏' : '公开'}）` : ''}</p>
+        </div>
+        {hasPrivateInfo(me) && <SkillBook skills={me.ownSkills} />}
+      </div>
       {game.winner && <p className="ok">游戏结束：{factionLabel[game.winner.faction]}胜利（{game.winner.reason}）</p>}
 
       {currentTransfer && (
@@ -266,6 +269,42 @@ function SkillSelectors({
       </label>
       {deadTargets.length > 0 && <p className="muted">灵媒默认使用第一名死者：{deadTargets[0]?.displayName}</p>}
     </div>
+  );
+}
+
+function SystemHints({ hints }: { hints: NonNullable<RoomView['game']>['systemHints'] }) {
+  if (hints.length === 0) return null;
+  return (
+    <div className="system-hints">
+      {hints.map((hint, index) => (
+        <article className={`system-hint ${hint.level}`} key={`${hint.title}-${index}`}>
+          <strong>{hint.title}</strong>
+          <p>{hint.message}</p>
+          {hint.actionText && <span className="badge">{hint.actionText}</span>}
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function SkillBook({ skills }: { skills: PrivatePlayerView['ownSkills'] }) {
+  if (skills.length === 0) return <p className="muted">暂无技能说明。</p>;
+  return (
+    <section className="skill-book">
+      <h3>我的技能</h3>
+      <div className="skill-list">
+        {skills.map((skill) => (
+          <article className={`skill-card ${skill.usable ? 'usable' : ''}`} key={skill.skillId}>
+            <header>
+              <strong>{skill.name}</strong>
+              <span>{skill.type === 'regular' ? '常规' : '角色'} / {skill.timing}</span>
+            </header>
+            <p>{skill.description}</p>
+            {skill.hint && <p className="muted">{skill.hint}</p>}
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

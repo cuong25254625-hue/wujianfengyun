@@ -21,6 +21,24 @@ export interface RoomSeatView {
   isOwner: boolean;
 }
 
+export interface SkillView {
+  skillId: string;
+  name: string;
+  description: string;
+  timing: string;
+  type: 'regular' | 'character';
+  usable: boolean;
+  hint?: string;
+}
+
+export interface SystemHintView {
+  level: 'info' | 'warning' | 'success';
+  title: string;
+  message: string;
+  actionText?: string;
+  relatedPhase?: GamePhase;
+}
+
 export interface PublicGameView {
   roomId: RoomId;
   status: GameStatus;
@@ -30,6 +48,7 @@ export interface PublicGameView {
   players: PublicPlayerView[];
   currentTransfer?: PublicCurrentTransferView;
   pendingActionsForMe: PendingAction[];
+  systemHints: SystemHintView[];
   publicLog: PublicLogEntry[];
   winner?: WinState['winner'];
   version: number;
@@ -49,6 +68,7 @@ export interface PublicPlayerView {
   characterVisibility?: CharacterVisibility;
   characterRevealed: boolean;
   gender?: Gender;
+  characterSkills?: SkillView[];
   trueInfoCount: number;
   falseInfoCount: number;
 }
@@ -56,6 +76,7 @@ export interface PublicPlayerView {
 export interface PrivatePlayerView extends PublicPlayerView {
   faction: Faction;
   regularSkills: RegularSkillState;
+  ownSkills: SkillView[];
 }
 
 export interface PublicCurrentTransferView {

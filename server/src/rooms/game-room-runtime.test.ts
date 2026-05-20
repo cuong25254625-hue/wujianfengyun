@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlayerId, UserId } from '@wujian/shared';
+import { MVP_CHARACTER_POOL } from '../engine/character-registry.js';
+import { getSkillDefinition } from '../engine/skill-registry.js';
 import { GameRoomRuntime } from './game-room-runtime.js';
 
 const userId = (index: number) => `user_${index}` as UserId;
@@ -30,6 +32,14 @@ const passFirstPending = (runtime: GameRoomRuntime, userIndex: number, playerId:
 };
 
 describe('GameRoomRuntime', () => {
+  it('has skill descriptions for every MVP character skill', () => {
+    for (const character of MVP_CHARACTER_POOL) {
+      for (const skillId of character.skillIds) {
+        expect(getSkillDefinition(skillId), `${character.name} missing ${skillId}`).toBeDefined();
+      }
+    }
+  });
+
   it('records setup events when starting a game', () => {
     const game = createStartedRoom();
     if (!game) throw new Error('game did not start');
