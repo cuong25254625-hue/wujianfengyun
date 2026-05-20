@@ -37,7 +37,7 @@
 - 验证结果更新：`npm run typecheck`、`npm test`、`npm run build` 均通过；测试数更新为 3 个测试文件、19 个测试。
 - 部署排障决策：Ubuntu 服务器 systemd 后端若 `Active: activating (auto-restart)` 且 `status=1/FAILURE`，先看完整日志 `journalctl -u wujianfengyun-server -n 100 --no-pager -l`，再确认 `/opt/wujianfengyun/server/dist/index.js` 是否存在；若存在，直接运行 `PORT=8787 NODE_ENV=production node server/dist/index.js` 以暴露真实 Node 异常。
 - 部署故障根因：生产环境 Node 运行 `server/dist/index.js` 时仍通过 `@wujian/shared` 解析到 `shared/src/index.ts`，导致 `ERR_UNKNOWN_FILE_EXTENSION .ts`；已将 `shared/package.json` 的 exports 从 `./src/index.ts` 改为 `./dist/index.js`/`./dist/index.d.ts`，服务器需拉取最新代码后重新 `npm ci && npm run build`。
-- 部署优化决策：用户认为手工部署太麻烦，已选择“一键脚本”方案，并要求预留 HTTPS；部署入口统一改为 Nginx `/ws` 反代，前端生产配置写入 `client/.env.production`，后续域名证书用 Certbot 升级到 HTTPS/WSS。
+- 部署优化决策：用户认为手工部署太麻烦，已选择"一键脚本"方案，并要求预留 HTTPS；部署入口统一改为 Nginx `/ws` 反代，前端生产配置写入 `client/.env.production`，后续域名证书用 Certbot 升级到 HTTPS/WSS。
 - 一键部署工具新增：`deploy/install.sh` 用于首次部署，`deploy/update.sh` 用于后续拉取更新，`deploy/status.sh` 用于诊断 OS/Node/Git/构建产物/systemd/Nginx/端口/日志，`deploy/README.md` 记录脚本用法和常见问题。
 - 部署脚本默认行为：项目目录 `/opt/wujianfengyun`、服务名 `wujianfengyun-server`、后端端口 `8787`、Nginx 托管 `client/dist` 并代理 `/ws -> 127.0.0.1:8787`；IP 测试使用 `--https off`，域名默认预留 `wss://域名/ws`。
 - 一键部署 typecheck 修复：服务器新拉取仓库后 `client` typecheck 可能先于 `shared` 构建，导致 `@wujian/shared` 无可用 `dist/*.d.ts` 而退化成 any，出现 RoomPanel/GameBoard 等 26 个隐式 any 类型错误；已将根 `npm run typecheck` 调整为先执行 `npm --workspace @wujian/shared run build`，再执行全 workspaces typecheck。
@@ -45,15 +45,15 @@
 - UI 第二轮优化决策：用户反馈页面元素太多、日志英文多、系统推进不明显；改为以 `GameBoard` 中文流程条 + 系统提示作为主视觉，降低人物技能和技能说明的常驻展示密度。
 - 日志策略决策：不改服务端 publicLog 协议，先在 `client/src/components/LogPanel.tsx` 用客户端字典把 messageKey/params 转为中文自然句，避免显示 `transfer.declared` 和原始 JSON。
 - 本轮 UI 改动：新增流程条、状态条、当前操作高亮卡片、折叠人物技能操作、折叠我的技能、中文连接/房间状态、中文胜利原因和中文日志格式化；验证 `npm run typecheck`、`npm test`、`npm run build` 通过。
-- 部署问题记录：用户反馈前端提示“WebSocket 连接已关闭，请刷新页面或重启后端”。优先排查后端 systemd 是否运行、8787 是否监听、Nginx `/ws` 是否正确代理，以及前端构建时 `VITE_WS_URL` 是否与 IP/域名/HTTPS 访问方式一致。
+- 部署问题记录：用户反馈前端提示"WebSocket 连接已关闭，请刷新页面或重启后端"。优先排查后端 systemd 是否运行、8787 是否监听、Nginx `/ws` 是否正确代理，以及前端构建时 `VITE_WS_URL` 是否与 IP/域名/HTTPS 访问方式一致。
 - WebSocket 排障进展：用户已确认 `wujianfengyun-server` 为 `active (running)`，后端监听 `*:8787`，因此问题不在 Node 后端；下一步重点检查生产前端 `client/.env.production` 的 `VITE_WS_URL` 和 Nginx `location /ws` 反代配置。
-- UI 第三轮优化：进入游戏后自动隐藏左侧房间卡片，布局改为“牌桌主区 + 右侧日志”，牌桌使用接近整屏高度；座位卡半径/尺寸/图片/文字改为随视口压缩，减少环形牌桌玩家显示不全的问题。
+- UI 第三轮优化：进入游戏后自动隐藏左侧房间卡片，布局改为"牌桌主区 + 右侧日志"，牌桌使用接近整屏高度；座位卡半径/尺寸/图片/文字改为随视口压缩，减少环形牌桌玩家显示不全的问题。
 - 本轮 UI 验证：`npm run typecheck`、`npm test`（3 个测试文件、19 个测试）、`npm run build` 全部通过。
 - UI 第四轮优化：用户要求当前进程应在桌面画布中操作，并且加入房间等待阶段桌面更大；已将游戏中 `GameBoard` 作为 `PlayerList` 的桌面中心内容渲染，操作按钮/系统提示/当前阶段状态进入牌桌中央，外部不再单独占据牌桌下方空间。
 - 等待/加入房间桌面优化：默认 `table-arena` 高度提升为 `clamp(720px, 76vh, 900px)`，让开局前座位信息也有更大展示区域；游戏内中心操作卡改为 `table-control-card` 紧凑样式，座位半径扩大到 `min(37vw, 43vh, 470px)` 并缩小卡宽，进一步缓解玩家显示不全。
 - 本轮 UI 验证：`npm run typecheck`、`npm test`（3 个测试文件、19 个测试）、`npm run build` 全部通过。
 - UI 第五轮优化：修复玩家改名后目标下拉列表仍显示旧名的问题，新增 `UpdateDisplayName` 房间命令并在准备/同步昵称时更新 seat 与 game player 的 displayName；目标下拉列表现在会跟随服务端广播的新名称更新。
-- 牌桌座位卡优化：座位卡改为“左侧角色头像 + 右侧玩家信息”的横向布局，降低上下座位卡高度；游戏内牌桌改回裁切边界并收缩座位半径，避免上下角色高出桌面画布。
+- 牌桌座位卡优化：座位卡改为"左侧角色头像 + 右侧玩家信息"的横向布局，降低上下座位卡高度；游戏内牌桌改回裁切边界并收缩座位半径，避免上下角色高出桌面画布。
 - 技能查看优化：所有玩家可以点击桌面上的已公开/自己可见角色头像，弹出角色技能说明；隐藏且未揭示角色仍不公开技能，避免泄露。
 - 本轮验证：`npm run typecheck`、`npm test`（3 个测试文件、19 个测试）、`npm run build` 全部通过。
 - 规则差距梳理：当前可玩版已覆盖房间、4-8 人身份、基础情报传递、试探/锁定/截获、濒死死亡、红蓝胜利、首批 10 人物的 MVP 技能和牌桌 UI；主要待补规则包括完整白方机密任务/最终 PK、9-10 人局、角色选择与开局选项、真实开放式技能追加窗口、完整人物技能细节、情报牌堆/每轮公开、断线重连/录像/GM/机器人、全 25/100 角色与战功系统。
@@ -65,17 +65,50 @@
 - 白方任务系统 Phase 1 完成：新增 `server/src/engine/mission-engine.ts`，接入 10 个 MVP 角色的简化任务检查、`secretMission` 白方宣胜、任务计数器、死亡延迟任务框架和任务完成私人提示；最终 PK、完整任务还原、C.C 指定目标 UI、拦截型任务仍待做。
 - 角色选择基础完成：大厅新增角色预选，`RoomSeat.characterPreferenceId`、`SelectCharacter` 命令、`RoomView.availableCharacters` 与预选名展示已接入；开局时按预选优先分配，未选者自动补位。正式选角阶段和开局选项仍待完善。
 - 当前验证结果更新：最近一轮综合改动后 `npm run typecheck`、`npm test`、`npm run build` 均通过；测试覆盖为 3 个测试文件、64 个测试。
-- 角色选择流程修正决策：用户明确要求角色选择应发生在“开始游戏后”，系统从角色池随机给每名玩家候选角色，选择完成前其他玩家不能看到自己选了谁；因此废弃大厅公开预选，改为开局后私密选角阶段。
+- 角色选择流程修正决策：用户明确要求角色选择应发生在"开始游戏后"，系统从角色池随机给每名玩家候选角色，选择完成前其他玩家不能看到自己选了谁；因此废弃大厅公开预选，改为开局后私密选角阶段。
 - 选角实现细节：`RoomSeat.characterOptionIds/selectedCharacterId` 为服务端权威状态，`RoomSeatView.characterOptions` 只下发给本人，`characterSelected` 公开显示选角进度；全员选择后才填充 `Player.character*` 并进入 `VictoryDeclareWindow`。
 - 角色池限制说明：MVP 角色池当前只有 10 个；4-5 人局可满足每人 2 个全局互不重复候选，6-8 人局暂自动降级为每人 1 个候选，以维持 4-8 人局可开。扩充到 16+ 角色后应恢复 6-8 人每人 2 选。
 - 当前验证结果更新：私密选角改动后 `npm run typecheck`、`npm test`（3 个测试文件、66 个测试）、`npm run build` 均通过。
 
+## 2026-05-20 第二阶段综合开发
+- 用户要求完成近期待办 1（隐私修复）、2（公屏/私密规则表）、3（角色选择重做）、4（手机端反馈优化）、6（技能引擎重构）、9（断线重连持久化）。
+- 试探隐私修复：`probe.success`/`probe.failed` 改为 `addPrivateLog` 私人记录，公屏仅保留 `probe.used`。
+- 传递隐私修复：`transfer.declared` 不再包含 truth，仅 from→target；truth 通过 `transfer.declaredTruth` 私人告知传递者。
+- 拒收隐私修复：`transfer.rejected` 公开拒收但不含 truth；`transfer.rejectedTruth` 仅告知传递者。
+- 可见规则表产出：`outputs/visibility-rules-table.md` 完整梳理所有 addLog/addPrivateLog 的可见层级（公屏/私人/目标可见）。
+- 技能引擎重构：新增 `server/src/engine/skill-handlers.ts`，定义 SkillHandler 接口 + SkillRuntimeAccess，每个技能独立注册为 handler，game-room-runtime.ts 的 switch/case 替换为 `getSkillHandler` 查找。
+- 手机端 UX：Toast 通知系统（提交→成功/失败）、.action-pulse 脉冲动画、:active 反馈、移动端 sticky + toast 置顶、≥44px 触控尺寸。
+- 房间持久化：`server/src/engine/persistence.ts` 支持 load/save/autoSave（每 30s 原子写入）；GameRoomRuntime.fromSaved 静态方法；RoomManager.restoreFromPersistence 启动时恢复房间。
+- 全部验证通过：`npm run typecheck` ✅ `npm test` ✅（3 测试文件、71 测试）`npm run build` ✅。
 
 ## 2026-05-20 自动提取
 - 用户要求试探的信息和结果默认只有试探者本人知道，不应在公屏显示。
 - 用户要求传递的情报的真假只有传递者知道，只有当对方接收后才能在公屏宣布真假。
 
-
-## 2026-05-20 自动提取
+## 2026-05-20 仓库迁移
 - 本地仓库的 origin 已更新为 https://github.com/tianyu9527/wujianfengyun.git（原旧地址为 cuong25254625-hue/wujianfengyun）
 - 后续所有代码推送都需使用此新仓库地址
+
+## 2026-05-20 断线重连竞态修复
+- 根因：服务器 WebSocket `connection` 中立即发送带临时 userId 的 `hello`，客户端收到后覆盖 localStorage 保存的正确 userId → 重连用错 ID 找不到座位。
+- 服务端修复：延迟 200ms 发送 hello；客户端先发 `reconnect`/`hello` 则取消延迟 hello。
+- 客户端修复：新增 `reconnectInFlight` 标志，重连进行中不从 `hello` 覆盖 `reconnectUserId`；`open` 始终发送 hello/reconnect。
+- App 修复：`wasReconnecting` ref 避免闭包陈旧值；重连成功后自动 `requestSync`。
+- 验证：`typecheck` ✅ `test` ✅（71 测试） `build` ✅。提交 `7e5c2c0`。
+
+## 2026-05-20 断线重连二次修复（本轮）
+- 根因分析：房间未开始时房主断线后房间消失。排查出 3 个问题：
+  1. **旧 socket close 竞态**：`handleReconnect` 关闭旧连接后，旧 socket close 事件异步创建新的 5 秒断开计时器，将刚重连用户标为断开。
+  2. **缺少 findRoomByUser 回退**：`handleReconnect` 只用 roomId 查找，roomId 丢失/错误时无回退。
+  3. **页面刷新不主动同步**：App.tsx `wasReconnecting` ref 初始为 false，页面刷新后 `onStatus('open')` 不调用 `requestSync`。
+- 修复 1：关闭旧连接前清空 `other.session.roomId = undefined`，使旧 socket 的 close handler 跳过 disconnect timer。
+- 修复 2：`handleReconnect` 增加 `findRoomByUser` 回退；回退成功也取消对应 room 的延迟断开计时器。
+- 修复 3：`onStatus('open')` 不再依赖 `wasReconnecting`，只要 persisted session 有 roomId 就调用 `requestSync`。
+- 额外改进：回退场景下用 `effectiveRoomId` 替换原 `roomId`，确保后续 broadcast/close-old-connection 用正确 roomId。
+- 验证：`typecheck` ✅ `test` ✅（71 测试） `build` ✅。
+
+
+## 2026-05-20 自动提取
+- 断线重连问题有三个根因：旧 socket 关闭时的竞态条件触发额外断开计时器；handleReconnect 缺少 findRoomByUser 回退；页面刷新后不主动同步房间状态。
+- 修复方案：关闭旧连接前清除 roomId 防止旧 close 事件误判；添加 findRoomByUser 容错查找；App 不再依赖 wasReconnecting 标记，始终在连接打开且 session 有 roomId 时 requestSync。
+- 修改文件为 server/src/ws/server.ts 和 client/src/App.tsx，全部测试通过，类型检查与构建成功。

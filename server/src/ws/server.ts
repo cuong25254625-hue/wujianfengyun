@@ -293,17 +293,34 @@ export class GameWebSocketServer {
       console.log(`[reconnect] 已取消延迟断开计时器`);
     }
 
-    const runtimeResult = this.rooms.getRuntime(roomId);
-    if (!runtimeResult.ok) {
-      console.log(`[reconnect] 房间不存在: ${roomId}`);
-      this.reject(client, runtimeResult.error, clientCommandId);
-      return;
+    // 先尝试通过 roomId 查找，失败则通过 userId 回退
+    const direct = this.rooms.getRuntime(roomId);
+    let runtime = direct.ok ? direct.value : undefined;
+    let effectiveRoomId = roomId;
+    if (!runtime) {
+      const fallback = this.rooms.findRoomByUser(userId as UserId);
+      if (fallback) {
+        console.log(`[reconnect] fallback by userId found room: ${fallback.room.roomId}`);
+        runtime = fallback;
+        effectiveRoomId = fallback.room.roomId;
+        // 也取消回退房间的延迟断开计时器
+        const fbKey = disconnectKey(effectiveRoomId, userId);
+        const fbTimer = this.pendingDisconnects.get(fbKey);
+        if (fbTimer) {
+          clearTimeout(fbTimer);
+          this.pendingDisconnects.delete(fbKey);
+        }
+      } else {
+        console.log(`[reconnect] 房间不存在: ${roomId}，userId 回退也未找到`);
+        this.reject(client, direct.ok ? makeError('reconnect.seatNotFound', '未找到你的座位') : direct.error, clientCommandId);
+        return;
+      }
     }
 
-    const seat = runtimeResult.value.room.seats.find((s) => s.userId === userId);
+    const seat = runtime.room.seats.find((s) => s.userId === userId);
     if (!seat) {
-      console.log(`[reconnect] 未找到座位: userId=${userId}, 现有座位: ${runtimeResult.value.room.seats.map(s => s.userId).join(', ')}`);
-      this.reject(client, makeError('reconnect.seatNotFound', '未找到你的座位，房间可能已经关闭'), clientCommandId, runtimeResult.value.room.game?.version);
+      console.log(`[reconnect] 未找到座位: userId=${userId}, 现有座位: ${runtime.room.seats.map(s => s.userId).join(', ')}`);
+      this.reject(client, makeError('reconnect.seatNotFound', '未找到你的座位，房间可能已经关闭'), clientCommandId, runtime.room.game?.version);
       return;
     }
 
@@ -312,7 +329,9 @@ export class GameWebSocketServer {
     // 同一座位如果已有旧连接，关闭旧连接，避免双客户端同时操作。
     for (const other of [...this.clients]) {
       if (other === client) continue;
-      if (other.session.roomId === roomId && other.session.userId === userId) {
+      if (other.session.roomId === effectiveRoomId && other.session.userId === userId) {
+        // 先清掉旧 session 的 roomId，防止旧 socket close 事件创建新的断开计时器
+        other.session.roomId = undefined;
         other.socket.close(4000, 'replaced by reconnect');
         this.clients.delete(other);
       }
@@ -320,18 +339,18 @@ export class GameWebSocketServer {
 
     // 恢复会话身份
     client.session.userId = userId as UserId;
-    client.session.roomId = roomId;
+    client.session.roomId = effectiveRoomId;
     if (seat.displayName) {
       client.session.displayName = seat.displayName;
     }
 
     // 标记为已连接
-    runtimeResult.value.setConnected(userId as UserId, true);
+    runtime.setConnected(userId as UserId, true);
 
     this.send(client, { type: 'hello', session: client.session.toView() });
-    this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
+    this.ack(client, clientCommandId, runtime.room.game?.version);
     // 下发完整房间状态
-    this.broadcastRoom(roomId);
+    this.broadcastRoom(effectiveRoomId);
   }
 
   private handleRequestSync(client: ConnectedClient, roomId: RoomId, clientCommandId?: string): void {

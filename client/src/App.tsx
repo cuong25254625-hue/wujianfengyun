@@ -135,11 +135,11 @@ export default function App() {
         if (wasReconnecting.current) {
           wasReconnecting.current = false;
           pushToast('success', '连接已恢复，同步房间状态...');
-          // 重连成功后主动请求同步房间状态
-          const sessionData = client.persistedSession;
-          if (sessionData.roomId) {
-            client.requestSync(sessionData.roomId);
-          }
+        }
+        // open 后总是检查是否有待恢复的房间（覆盖页面刷新/断线重连两种场景）
+        const sessionData = client.persistedSession;
+        if (sessionData.roomId) {
+          client.requestSync(sessionData.roomId);
         }
       }
       if (status === 'error') {
