@@ -76,172 +76,120 @@ npm run build
 
 ## Ubuntu 22.04 x64 服务器部署
 
-以下步骤面向一台全新的 Ubuntu 22.04 x64 服务器。示例中假设域名或服务器 IP 为 `<SERVER_IP_OR_DOMAIN>`。
+推荐使用 `deploy/` 目录下的一键脚本，减少手写 Nginx / systemd 配置时的拼写错误。生产推荐结构是：Nginx 托管 `client/dist`，并把 `/ws` 反向代理到本机后端 `8787`。公网只需要开放 80/443，后续可平滑升级 HTTPS/WSS。
 
-### 1. 安装基础软件
+### 推荐：首次一键部署
+
+IP 临时测试：
 
 ```bash
-sudo apt update
-sudo apt install -y curl git nginx
+git clone https://github.com/cuong25254625-hue/wujianfengyun.git
+cd wujianfengyun
+bash deploy/install.sh --domain <SERVER_IP> --https off
 ```
 
-安装 Node.js 20 LTS：
+域名部署并预留 HTTPS/WSS：
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt install -y nodejs
-node -v
-npm -v
+git clone https://github.com/cuong25254625-hue/wujianfengyun.git
+cd wujianfengyun
+bash deploy/install.sh --domain <YOUR_DOMAIN>
 ```
 
-### 2. 拉取代码
+脚本默认会：
+
+- 安装 `curl git nginx`；
+- 安装/检查 Node.js 20；
+- 拉取或更新 `/opt/wujianfengyun`；
+- 生成 `client/.env.production`；
+- 执行 `npm ci`、`npm run typecheck`、`npm test`、`npm run build`；
+- 写入并启动 `wujianfengyun-server` systemd 服务；
+- 写入 Nginx 站点配置；
+- 删除默认 Nginx 站点 symlink；
+- 执行 `nginx -t`，成功后 reload Nginx。
+
+常用参数：
+
+```text
+--domain <域名或IP>       必填，公网访问地址
+--project-dir <path>      部署目录，默认 /opt/wujianfengyun
+--branch <name>           分支，默认 main
+--port <number>           后端端口，默认 8787
+--https reserved|enabled|off
+--skip-tests              跳过 npm test
+```
+
+### 推荐：更新部署
+
+代码推送到 GitHub 后，服务器执行：
 
 ```bash
-sudo mkdir -p /opt/wujianfengyun
-sudo chown "$USER":"$USER" /opt/wujianfengyun
-git clone https://github.com/cuong25254625-hue/wujianfengyun.git /opt/wujianfengyun
 cd /opt/wujianfengyun
+bash deploy/update.sh --domain <SERVER_IP> --https off
 ```
 
-### 3. 安装依赖并构建
+域名部署：
 
 ```bash
-npm ci
-npm run typecheck
-npm test
-npm run build
+cd /opt/wujianfengyun
+bash deploy/update.sh --domain <YOUR_DOMAIN>
 ```
 
-构建产物：
+更新脚本会检查 Git 工作区是否干净，默认使用 `git pull --ff-only`，避免覆盖服务器上的临时改动。
 
-- 前端静态文件：`client/dist/`
-- 服务端 JS：`server/dist/`
-- 共享类型构建：`shared/dist/`
-
-### 4. 配置前端 WebSocket 地址
-
-生产环境建议显式设置前端连接的 WebSocket 地址。构建前在项目根目录创建 `.env.production`：
+### 推荐：状态诊断
 
 ```bash
-cat > .env.production <<'EOF'
-VITE_WS_URL=ws://<SERVER_IP_OR_DOMAIN>:8787
-EOF
+cd /opt/wujianfengyun
+bash deploy/status.sh
 ```
 
-如果使用 HTTPS 域名和反向代理，请改为：
+诊断脚本会输出：
+
+- OS / Node / npm 版本；
+- Git 当前提交与工作区状态；
+- `client/dist/index.html`、`server/dist/index.js`、`shared/dist/index.js` 是否存在；
+- `wujianfengyun-server` 服务状态；
+- Nginx 配置测试结果；
+- 80/443/8787 端口监听；
+- 最近后端和 Nginx 日志。
+
+### HTTPS 启用
+
+如果域名已经解析到服务器，并且 80 端口可访问：
 
 ```bash
-VITE_WS_URL=wss://<SERVER_IP_OR_DOMAIN>/ws
-```
-
-然后重新构建：
-
-```bash
-npm run build
-```
-
-> 注意：Vite 的 `VITE_` 环境变量会在构建时写入前端产物，修改后需要重新 `npm run build`。
-
-### 5. 用 systemd 运行后端
-
-创建服务文件：
-
-```bash
-sudo tee /etc/systemd/system/wujianfengyun-server.service > /dev/null <<'EOF'
-[Unit]
-Description=Wujian Fengyun MVP WebSocket Server
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/wujianfengyun
-Environment=NODE_ENV=production
-Environment=PORT=8787
-ExecStart=/usr/bin/node /opt/wujianfengyun/server/dist/index.js
-Restart=always
-RestartSec=3
-User=www-data
-Group=www-data
-
-[Install]
-WantedBy=multi-user.target
-EOF
-```
-
-授权并启动：
-
-```bash
-sudo chown -R www-data:www-data /opt/wujianfengyun
-sudo systemctl daemon-reload
-sudo systemctl enable --now wujianfengyun-server
-sudo systemctl status wujianfengyun-server --no-pager
-```
-
-查看日志：
-
-```bash
-sudo journalctl -u wujianfengyun-server -f
-```
-
-### 6. 用 Nginx 托管前端
-
-创建 Nginx 配置：
-
-```bash
-sudo tee /etc/nginx/sites-available/wujianfengyun > /dev/null <<'EOF'
-server {
-    listen 80;
-    server_name <SERVER_IP_OR_DOMAIN>;
-
-    root /opt/wujianfengyun/client/dist;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # 如果前端 VITE_WS_URL 使用 wss://<domain>/ws，可开启此反向代理。
-    location /ws {
-        proxy_pass http://127.0.0.1:8787;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_read_timeout 3600s;
-    }
-}
-EOF
-```
-
-启用站点：
-
-```bash
-sudo ln -sf /etc/nginx/sites-available/wujianfengyun /etc/nginx/sites-enabled/wujianfengyun
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d <YOUR_DOMAIN>
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-### 7. 防火墙放行
-
-如果直接使用 `ws://<服务器>:8787`：
+然后重新构建前端，确保 WebSocket 使用 WSS：
 
 ```bash
-sudo ufw allow 80/tcp
-sudo ufw allow 8787/tcp
-sudo ufw status
+cd /opt/wujianfengyun
+bash deploy/update.sh --domain <YOUR_DOMAIN>
 ```
 
-如果使用 Nginx `/ws` 反向代理，则公网只需要开放 80/443，8787 可仅监听内网或由安全组限制。
-
-### 8. 访问测试
-
-浏览器打开：
+HTTPS 启用后访问：
 
 ```text
-http://<SERVER_IP_OR_DOMAIN>/
+https://<YOUR_DOMAIN>/
 ```
 
-多人测试流程：
+### 手动部署参考
+
+如果脚本无法满足特殊服务器环境，可参考 `deploy/README.md` 中的脚本行为手动处理。关键点：
+
+- Vite 生产环境变量应写入 `client/.env.production`；
+- 使用 Nginx `/ws` 反代时，推荐：`VITE_WS_URL=wss://<YOUR_DOMAIN>/ws`；
+- IP 临时测试可用：`VITE_WS_URL=ws://<SERVER_IP>/ws`；
+- 修改 `client/.env.production` 后必须重新 `npm run build`；
+- systemd 后端入口是 `/opt/wujianfengyun/server/dist/index.js`；
+- Nginx 前端根目录是 `/opt/wujianfengyun/client/dist`。
+
+### 多人测试流程
 
 1. 房主输入昵称并创建房间。
 2. 将房间号发给其他玩家。
@@ -253,22 +201,21 @@ http://<SERVER_IP_OR_DOMAIN>/
 ## 常用运维命令
 
 ```bash
-# 更新代码
+# 更新代码并重启
 cd /opt/wujianfengyun
-git pull
-npm ci
-npm run build
-sudo systemctl restart wujianfengyun-server
-sudo systemctl reload nginx
+bash deploy/update.sh --domain <SERVER_IP_OR_DOMAIN>
+
+# 一键诊断
+bash deploy/status.sh
 
 # 查看后端状态
-sudo systemctl status wujianfengyun-server --no-pager
+sudo systemctl status wujianfengyun-server --no-pager -l
 
 # 查看后端日志
 sudo journalctl -u wujianfengyun-server -f
 
 # 检查端口
-ss -lntp | grep -E '(:80|:8787)'
+ss -lntp | grep -E '(:80|:443|:8787)'
 ```
 
 ## 当前 MVP 限制

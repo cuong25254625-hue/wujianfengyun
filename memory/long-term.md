@@ -27,3 +27,16 @@
 - 当前验证结果更新：接入角色技能后 `npm run typecheck && npm test && npm run build` 全部通过；测试数更新为 3 个测试文件、15 个测试。
 - 前端开发端口调整：因 5173、5174 均被占用，已将 `client/vite.config.ts` 和 `client/package.json` 的 Vite dev 端口改为 5180，并保留 `host: 0.0.0.0`/`--strictPort` 便于局域网测试；当前客户端测试入口为 `http://localhost:5180/` 或局域网 IP 的 5180 端口，后端 WebSocket 仍为 8787。
 - 创建房间无响应修复：问题原因是前端 5180 在运行但后端 WebSocket 8787 未监听；已启动 `npm run dev:server` 恢复 8787，并在 `WsClient` 增加连接状态、错误提示和连接中消息队列，避免 WebSocket 未 open 时点击创建房间被静默丢弃。
+- GitHub 同步记录：已初始化 Git 仓库并推送到 `https://github.com/cuong25254625-hue/wujianfengyun` 的 `main` 分支，提交 `8e13a31`；新增 `README.md`，包含项目说明、本地开发命令、Ubuntu 22.04 x64 部署、systemd、Nginx、WebSocket 反代和防火墙说明。
+
+## 2026-05-20
+- 对局完整性优化：新增系统提醒、技能说明和牌桌 UI；服务端通过 `PublicGameView.systemHints` 下发当前阶段下一步提示，通过 `PrivatePlayerView.ownSkills` 展示本人常规/角色技能说明。
+- 技能说明数据源：新增 `server/src/engine/skill-registry.ts`，集中维护常规技能与首批 10 个角色技能的 MVP 说明，避免前端硬编码规则文案。
+- 隐私修复：隐藏且未揭示角色对他人不再下发角色名、角色图、技能说明；本人仍可看到自己的隐藏角色和技能。
+- 前端 UI 决策：采用左侧房间信息、中间环形牌桌与操作区、右侧日志的页游式布局；`PlayerList` 负责环形座位牌，`GameBoard` 负责系统提醒、我的技能书和操作按钮。
+- 验证结果更新：`npm run typecheck`、`npm test`、`npm run build` 均通过；测试数更新为 3 个测试文件、19 个测试。
+- 部署排障决策：Ubuntu 服务器 systemd 后端若 `Active: activating (auto-restart)` 且 `status=1/FAILURE`，先看完整日志 `journalctl -u wujianfengyun-server -n 100 --no-pager -l`，再确认 `/opt/wujianfengyun/server/dist/index.js` 是否存在；若存在，直接运行 `PORT=8787 NODE_ENV=production node server/dist/index.js` 以暴露真实 Node 异常。
+- 部署故障根因：生产环境 Node 运行 `server/dist/index.js` 时仍通过 `@wujian/shared` 解析到 `shared/src/index.ts`，导致 `ERR_UNKNOWN_FILE_EXTENSION .ts`；已将 `shared/package.json` 的 exports 从 `./src/index.ts` 改为 `./dist/index.js`/`./dist/index.d.ts`，服务器需拉取最新代码后重新 `npm ci && npm run build`。
+- 部署优化决策：用户认为手工部署太麻烦，已选择“一键脚本”方案，并要求预留 HTTPS；部署入口统一改为 Nginx `/ws` 反代，前端生产配置写入 `client/.env.production`，后续域名证书用 Certbot 升级到 HTTPS/WSS。
+- 一键部署工具新增：`deploy/install.sh` 用于首次部署，`deploy/update.sh` 用于后续拉取更新，`deploy/status.sh` 用于诊断 OS/Node/Git/构建产物/systemd/Nginx/端口/日志，`deploy/README.md` 记录脚本用法和常见问题。
+- 部署脚本默认行为：项目目录 `/opt/wujianfengyun`、服务名 `wujianfengyun-server`、后端端口 `8787`、Nginx 托管 `client/dist` 并代理 `/ws -> 127.0.0.1:8787`；IP 测试使用 `--https off`，域名默认预留 `wss://域名/ws`。
