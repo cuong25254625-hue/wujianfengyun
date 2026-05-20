@@ -695,7 +695,13 @@ export class GameRoomRuntime {
 
   private advanceTurn(game: GameState): GameState {
     const aliveSeats = Object.values(game.players).filter((player) => player.aliveState === 'alive').sort((a, b) => a.seatIndex - b.seatIndex);
-    if (aliveSeats.length === 0) return this.enterPhase(game, 'GameOver', { type: 'none' });
+    if (aliveSeats.length === 0) {
+      game.status = 'finished';
+      game.winState = { finished: true };
+      this.room.status = 'finished';
+      this.addLog(game, 'game.allDead', { playerCount: Object.keys(game.players).length });
+      return this.enterPhase(game, 'GameOver', { type: 'none' });
+    }
     const currentSeat = game.turn.activeSeatIndex;
     const next = aliveSeats.find((player) => player.seatIndex > currentSeat) ?? aliveSeats[0];
     if (!next) return this.enterPhase(game, 'GameOver', { type: 'none' });
@@ -1044,6 +1050,73 @@ export class GameRoomRuntime {
   private allRequiredResponded(action: PendingAction): boolean {
     const required = action.requiredPlayerIds ?? action.eligiblePlayerIds;
     return required.every((playerId) => action.responses.some((response) => response.playerId === playerId));
+  }
+
+  /**
+   * GM 强制推进阶段，用于处理卡住的游戏状态。
+   * 关闭所有已打开的待响应窗口并尝试推进到下一个阶段。
+   */
+  forceAdvancePhase(userId: UserId): DomainResult<GameState> {
+    const game = this.room.game;
+    if (!game || this.room.status !== 'playing') return err('gm.gameNotRunning', '游戏尚未进行中');
+    if (game.status === 'finished') return err('gm.gameFinished', '游戏已经结束');
+
+    const fromPhase = game.phase.phase;
+
+    // 关闭所有 open 的 pending actions
+    for (const actionId of Object.keys(game.pendingActions)) {
+      const action = game.pendingActions[actionId as keyof typeof game.pendingActions];
+      if (action && action.status === 'open') {
+        action.status = 'resolved';
+      }
+    }
+
+    this.appendEvent(game, { type: 'GmPhaseForced', fromPhase, toPhase: fromPhase, triggeredBy: userId });
+    this.addLog(game, 'gm.forceAdvance', { phase: fromPhase, user: userId });
+
+    // 按当前阶段决定推进目标
+    switch (fromPhase) {
+      case 'VictoryDeclareWindow': {
+        const active = this.activePlayer(game);
+        return ok(this.enterPhase(game, 'SkillWindow', { type: 'activeTurn', activePlayerId: active.playerId }));
+      }
+      case 'SkillWindow': {
+        const active = this.activePlayer(game);
+        return ok(this.enterPhase(game, 'TransferDeclare', { type: 'activeTurn', activePlayerId: active.playerId }));
+      }
+      case 'ReactionWindow': {
+        if (game.currentTransfer) {
+          return ok(this.resolveReactionWindow(game));
+        }
+        return ok(this.advanceTurn(game));
+      }
+      case 'ReceiveDecision': {
+        if (game.currentTransfer) {
+          // 强制接收
+          game.currentTransfer.receiveDecision = 'receive';
+          this.addLog(game, 'gm.forceReceive', { receiver: this.playerName(game, game.currentTransfer.finalReceiverPlayerId ?? game.currentTransfer.targetPlayerId) });
+          return ok(this.settleTransfer(game));
+        }
+        return ok(this.advanceTurn(game));
+      }
+      case 'DyingWindow': {
+        const dyingId = game.phase.context.type === 'dying' ? game.phase.context.playerId : undefined;
+        if (dyingId) {
+          return ok(this.resolveDyingDeath(game, dyingId));
+        }
+        return ok(this.advanceTurn(game));
+      }
+      case 'TransferDeclare': {
+        // 跳过当前玩家的传递回合
+        const active = Object.values(game.players).find((p) => p.seatIndex === game.turn.activeSeatIndex);
+        this.addLog(game, 'gm.skipTurn', { player: active?.displayName ?? 'unknown' });
+        return ok(this.advanceTurn(game));
+      }
+      case 'GameOver':
+        return err('gm.gameOver', '游戏已结束');
+      default:
+        return ok(this.advanceTurn(game));
+    }
   }
 
   private createSeat(seatIndex: number, userId: UserId, displayName: string, ownerUserId = this.room.ownerUserId): RoomSeat {

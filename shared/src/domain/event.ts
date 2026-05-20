@@ -12,7 +12,7 @@ export interface EventEnvelope<T extends GameEvent = GameEvent> {
   gameVersionBefore: number;
 }
 
-export type GameEvent = RoomEvent | SetupEvent | PhaseEvent | TransferEvent | RegularSkillEvent | CharacterSkillEvent | InfoEvent | DyingDeathEvent | VictoryEvent;
+export type GameEvent = RoomEvent | SetupEvent | PhaseEvent | TransferEvent | RegularSkillEvent | CharacterSkillEvent | InfoEvent | DyingDeathEvent | VictoryEvent | GmEvent;
 
 export type RoomEvent =
   | { type: 'RoomCreated'; roomId: RoomId; ownerUserId: UserId }
@@ -68,3 +68,6 @@ export type VictoryEvent =
   | { type: 'VictoryCandidateFound'; playerIds: PlayerId[] }
   | { type: 'VictoryDeclared'; playerId: PlayerId; faction: Extract<Faction, 'red' | 'blue'>; reason: 'threeTrueInfo' | 'clearField' }
   | { type: 'GameFinished'; faction: Extract<Faction, 'red' | 'blue'> };
+
+export type GmEvent =
+  | { type: 'GmPhaseForced'; fromPhase: GamePhase; toPhase: GamePhase; triggeredBy: UserId };

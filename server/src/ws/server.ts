@@ -153,6 +153,20 @@ export class GameWebSocketServer {
         this.broadcastRoom(command.roomId);
         return;
       }
+      case 'GmForceAdvance': {
+        const runtimeResult = this.rooms.getRuntime(command.roomId);
+        if (!runtimeResult.ok) {
+          this.send(client, { type: 'error', error: runtimeResult.error });
+          return;
+        }
+        const result = runtimeResult.value.forceAdvancePhase(client.session.userId);
+        if (!result.ok) {
+          this.send(client, { type: 'error', error: result.error });
+          return;
+        }
+        this.broadcastRoom(command.roomId);
+        return;
+      }
     }
   }
 
