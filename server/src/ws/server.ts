@@ -52,9 +52,18 @@ export class GameWebSocketServer {
     this.wss.on('connection', (socket) => {
       const client: ConnectedClient = { socket, session: new ClientSession() };
       this.clients.add(client);
-      this.send(client, { type: 'hello', session: client.session.toView() });
 
-      socket.on('message', (data) => this.handleMessage(client, data.toString()));
+      // 延迟发送 hello，给客户端先发送 hello/reconnect 的机会。
+      // 如果客户端在 200ms 内发送了 reconnect，则取消自动 hello，
+      // 避免客户端先用新 userId 覆盖 localStorage 里保存的正确 userId。
+      const helloTimer = setTimeout(() => {
+        this.send(client, { type: 'hello', session: client.session.toView() });
+      }, 200);
+
+      socket.on('message', (data) => {
+        clearTimeout(helloTimer);
+        this.handleMessage(client, data.toString());
+      });
       socket.on('close', () => {
         this.clients.delete(client);
         const userId = client.session.userId;
@@ -274,25 +283,31 @@ export class GameWebSocketServer {
   }
 
   private handleReconnect(client: ConnectedClient, userId: string, roomId: RoomId, clientCommandId?: string): void {
+    console.log(`[reconnect] 收到重连请求 userId=${userId} roomId=${roomId}`);
     // 取消该 room:user 的延迟断开计时器
     const key = disconnectKey(roomId, userId);
     const timer = this.pendingDisconnects.get(key);
     if (timer) {
       clearTimeout(timer);
       this.pendingDisconnects.delete(key);
+      console.log(`[reconnect] 已取消延迟断开计时器`);
     }
 
     const runtimeResult = this.rooms.getRuntime(roomId);
     if (!runtimeResult.ok) {
+      console.log(`[reconnect] 房间不存在: ${roomId}`);
       this.reject(client, runtimeResult.error, clientCommandId);
       return;
     }
 
     const seat = runtimeResult.value.room.seats.find((s) => s.userId === userId);
     if (!seat) {
+      console.log(`[reconnect] 未找到座位: userId=${userId}, 现有座位: ${runtimeResult.value.room.seats.map(s => s.userId).join(', ')}`);
       this.reject(client, makeError('reconnect.seatNotFound', '未找到你的座位，房间可能已经关闭'), clientCommandId, runtimeResult.value.room.game?.version);
       return;
     }
+
+    console.log(`[reconnect] 重连成功: ${seat.displayName} 恢复座位`);
 
     // 同一座位如果已有旧连接，关闭旧连接，避免双客户端同时操作。
     for (const other of [...this.clients]) {

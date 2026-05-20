@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CharacterId, ClientMessage, PlayerCommand, RoomId, RoomView, ServerMessage, SessionView } from '@wujian/shared';
 import { WsClient } from './api/ws-client';
 import { GameBoard } from './components/GameBoard';
@@ -67,6 +67,7 @@ export default function App() {
   const [reconnectMax, setReconnectMax] = useState(12);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [pendingLabels, setPendingLabels] = useState<Record<string, string>>({});
+  const wasReconnecting = useRef(false);
 
   const pushToast = (kind: ToastKind, message: string) => {
     const id = `toast_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -130,7 +131,17 @@ export default function App() {
       const info = client.reconnectInfo;
       setReconnectAttempt(info.attempt);
       setReconnectMax(info.max);
-      if (status === 'open' && info.attempt === 0) pushToast('success', '连接已恢复');
+      if (status === 'open') {
+        if (wasReconnecting.current) {
+          wasReconnecting.current = false;
+          pushToast('success', '连接已恢复，同步房间状态...');
+          // 重连成功后主动请求同步房间状态
+          const sessionData = client.persistedSession;
+          if (sessionData.roomId) {
+            client.requestSync(sessionData.roomId);
+          }
+        }
+      }
       if (status === 'error') {
         pushToast('error', '无法连接后端服务');
         setMessages((items) => ['错误：无法连接 WebSocket 服务，请确认 8787 端口的后端已启动', ...items].slice(0, 20));
@@ -140,6 +151,7 @@ export default function App() {
         setMessages((items) => ['提示：WebSocket 连接已关闭，请刷新页面或重启后端', ...items].slice(0, 20));
       }
       if (status === 'reconnecting') {
+        wasReconnecting.current = true;
         pushToast('warning', `正在重连（第 ${info.attempt}/${info.max} 次）`);
         setMessages((items) => [`提示：正在重连...（第 ${info.attempt}/${info.max} 次）`, ...items].slice(0, 20));
       }

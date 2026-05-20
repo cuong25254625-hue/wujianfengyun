@@ -53,6 +53,9 @@ export class WsClient {
   private reconnectRoomId: RoomId | undefined;
   private displayName: string | undefined;
 
+  // 标记是否正在等待 reconnect 响应，防止 hello 覆盖正确的 userId
+  private reconnectInFlight = false;
+
   constructor() {
     const persisted = loadPersistedSession();
     this.reconnectUserId = persisted.userId;
@@ -75,6 +78,7 @@ export class WsClient {
 
       // 重连成功后，先发送 reconnect 恢复会话，再刷新待发消息
       if (this.reconnectUserId && this.reconnectRoomId) {
+        this.reconnectInFlight = true;
         this.socket?.send(JSON.stringify({
           type: 'reconnect',
           userId: this.reconnectUserId,
@@ -82,6 +86,9 @@ export class WsClient {
         } satisfies ClientMessage));
       } else if (this.displayName) {
         this.socket?.send(JSON.stringify({ type: 'hello', displayName: this.displayName } satisfies ClientMessage));
+      } else {
+        // 全新用户，发送空 hello 让服务器分配 userId
+        this.socket?.send(JSON.stringify({ type: 'hello' } satisfies ClientMessage));
       }
 
       this.flushPendingMessages();
@@ -108,9 +115,13 @@ export class WsClient {
       const msg = JSON.parse(event.data as string) as ServerMessage;
       // 记录身份用于重连
       if (msg.type === 'hello') {
-        this.reconnectUserId = msg.session.userId;
+        // 重连进行中不覆盖 userId，因为服务器可能先发了新连接的临时 userId
+        // 真正的 userId 会在 roomView 或 reconnect 对应的 hello 中下发
+        if (!this.reconnectInFlight) {
+          this.reconnectUserId = msg.session.userId;
+        }
         this.displayName = msg.session.displayName;
-        if (msg.session.roomId) {
+        if (msg.session.roomId && !this.reconnectInFlight) {
           this.reconnectRoomId = msg.session.roomId;
         }
         this.persistSession();
@@ -120,10 +131,16 @@ export class WsClient {
         this.persistSession();
       }
       if (msg.type === 'roomView') {
+        // 收到房间视图说明 reconnect 成功（或正常进入房间）
+        this.reconnectInFlight = false;
         this.reconnectUserId = msg.session.userId;
         this.reconnectRoomId = msg.room.roomId;
         this.displayName = msg.session.displayName;
         this.persistSession();
+      }
+      if (msg.type === 'commandRejected' || msg.type === 'error') {
+        // reconnect 失败时清除标记，让后续 hello 可以正常更新
+        this.reconnectInFlight = false;
       }
       this.handlers.forEach((handler) => handler(msg));
     });
