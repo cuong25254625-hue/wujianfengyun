@@ -1,4 +1,4 @@
-import type { DomainResult, GameRoom, RoomId, UserId } from '@wujian/shared';
+import type { DomainResult, GameRoom, RoomId, UserId, RoomSummary } from '@wujian/shared';
 import { err, ok } from '@wujian/shared';
 import { createRoomId } from '../util/id.js';
 import { GameRoomRuntime } from './game-room-runtime.js';
@@ -27,6 +27,23 @@ export class RoomManager {
 
   findRoomByUser(userId: UserId): GameRoomRuntime | undefined {
     return Array.from(this.rooms.values()).find((runtime) => runtime.room.seats.some((seat) => seat.userId === userId));
+  }
+
+  getLobbyRooms(): RoomSummary[] {
+    const summaries: RoomSummary[] = [];
+    for (const runtime of this.rooms.values()) {
+      if (runtime.room.status === 'closed') continue;
+
+      summaries.push({
+        roomId: runtime.room.roomId,
+        ownerName: runtime.room.seats.find((s) => s.userId === runtime.room.ownerUserId)?.displayName || '房主',
+        status: runtime.room.status,
+        playerCount: runtime.room.seats.length,
+        maxPlayers: 8,
+        createdAt: runtime.room.createdAt,
+      });
+    }
+    return summaries.sort((a, b) => b.createdAt - a.createdAt);
   }
 
   /** 获取所有房间的 GameRoom 快照用于持久化。 */

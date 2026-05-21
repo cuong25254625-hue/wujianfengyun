@@ -4,6 +4,7 @@ import type { CharacterId, PlayerId, RoomView, SessionView } from '@wujian/share
 interface RoomPanelProps {
   room: RoomView | undefined;
   session: SessionView | undefined;
+  lobbyRooms: import('@wujian/shared').RoomSummary[];
   connectionStatus: string;
   displayName: string;
   roomIdInput: string;
@@ -12,6 +13,8 @@ interface RoomPanelProps {
   onUpdateDisplayName: () => void;
   onCreateRoom: () => void;
   onJoinRoom: () => void;
+  onJoinLobbyRoom: (roomId: string) => void;
+  onLeaveRoom: () => void;
   onSelectCharacter: (characterId: CharacterId) => void;
   onSubmitSetupChoice: (choiceKey: 'ccMissionTarget', targetPlayerId: PlayerId) => void;
   onSetReady: (ready: boolean) => void;
@@ -60,13 +63,37 @@ export function RoomPanel(props: RoomPanelProps) {
         <button onClick={props.onCreateRoom}>创建房间</button>
         {room && <button onClick={props.onUpdateDisplayName}>同步昵称</button>}
       </div>
-      <label>
-        房间号
-        <input value={props.roomIdInput} onChange={(event) => props.onRoomIdInputChange(event.target.value)} placeholder="例如 ABC123" />
-      </label>
-      <div className="actions">
-        <button onClick={props.onJoinRoom}>加入房间</button>
-      </div>
+      {!room && (
+        <>
+          <label>
+            房间号
+            <input value={props.roomIdInput} onChange={(event) => props.onRoomIdInputChange(event.target.value)} placeholder="例如 ABC123" />
+          </label>
+          <div className="actions">
+            <button onClick={props.onJoinRoom}>加入房间</button>
+          </div>
+          {props.lobbyRooms.length > 0 && (
+            <div className="lobby-rooms">
+              <h3>游戏大厅</h3>
+              <ul className="lobby-list">
+                {props.lobbyRooms.map((r) => (
+                  <li key={r.roomId} className="lobby-item">
+                    <span className="lobby-id">{r.roomId.slice(0, 4)}</span>
+                    <span className="lobby-host">{r.ownerName}</span>
+                    <span className="lobby-count">{r.playerCount}/{r.maxPlayers}</span>
+                    <button
+                      onClick={() => props.onJoinLobbyRoom(r.roomId)}
+                      disabled={r.status !== 'lobby' || r.playerCount >= r.maxPlayers}
+                    >
+                      {r.status === 'lobby' ? (r.playerCount >= r.maxPlayers ? '已满' : '加入') : roomStatusLabel[r.status] ?? r.status}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
       {room && (
         <div className="room-meta">
           <p>当前房间：<strong>{room.roomId}</strong></p>
@@ -139,6 +166,7 @@ export function RoomPanel(props: RoomPanelProps) {
             <button onClick={() => props.onSetReady(!mySeat?.ready)}>{mySeat?.ready ? '取消准备' : '准备'}</button>
             {isOwner && room.seats.every(s => s.ready || s.userId === session?.userId) && <button onClick={props.onStartGame} className="action-pulse">开始游戏</button>}
             {isOwner && !room.seats.every(s => s.ready || s.userId === session?.userId) && <button disabled>等待玩家准备</button>}
+            <button onClick={props.onLeaveRoom} className="leave-button">退出房间</button>
             {!isOwner && room.status === 'lobby' && <span className="muted">等待房主开始游戏{hostSeat?.connected ? '' : '（房主离线，将在断线后自动转移给在线玩家）'}</span>}
           </div>
         </div>

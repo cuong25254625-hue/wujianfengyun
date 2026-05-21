@@ -66,6 +66,7 @@ export default function App() {
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [reconnectMax, setReconnectMax] = useState(12);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [lobbyRooms, setLobbyRooms] = useState<import('@wujian/shared').RoomSummary[]>([]);
   const pendingLabelsRef = useRef<Record<string, string>>({});
   const wasReconnecting = useRef(false);
   const previousOwnerUserId = useRef<string | undefined>();
@@ -96,6 +97,9 @@ export default function App() {
   useEffect(() => {
     client.connect();
     const offMessage = client.onMessage((message: ServerMessage) => {
+      if (message.type === 'lobbyView') {
+        setLobbyRooms(message.rooms);
+      }
       if (message.type === 'hello') setSession(message.session);
       if (message.type === 'roomView') {
         // 检测房主变更并通知
@@ -119,6 +123,15 @@ export default function App() {
         activeRoomIdRef.current = message.roomId;
         suppressStaleReconnectRejectUntilRef.current = Date.now() + 3000;
         setRoomIdInput(message.roomId);
+      }
+      if (message.type === 'leftRoom') {
+        client.forgetRoom();
+        activeRoomIdRef.current = undefined;
+        currentRoomRef.current = undefined;
+        setRoom(undefined);
+        setRoomIdInput('');
+        previousOwnerUserId.current = undefined;
+        pushToast('success', '已退出房间');
       }
       if (message.type === 'commandAck') {
         const label = pendingLabelsRef.current[message.clientCommandId] ?? '操作';
@@ -245,6 +258,14 @@ export default function App() {
     sendWithFeedback({ type: 'roomCommand', command: { type: 'JoinRoom', roomId: roomIdInput.trim() as RoomId, displayName } });
   };
 
+  const leaveRoom = () => {
+    if (!room) return;
+    if (room.status === 'playing' && !window.confirm('游戏已经开始，中途退出将视为断线托管。确定要退出吗？')) {
+      return;
+    }
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'LeaveRoom', roomId: room.roomId } });
+  };
+
   const selectCharacter = (characterId: CharacterId) => {
     if (!room) return;
     sendWithFeedback({ type: 'roomCommand', command: { type: 'SelectCharacter', roomId: room.roomId, characterId } });
@@ -303,6 +324,7 @@ export default function App() {
             <RoomPanel
               room={room}
               session={session}
+              lobbyRooms={lobbyRooms}
               connectionStatus={connectionStatus}
               displayName={displayName}
               roomIdInput={roomIdInput}
@@ -311,6 +333,11 @@ export default function App() {
               onUpdateDisplayName={syncDisplayName}
               onCreateRoom={createRoom}
               onJoinRoom={joinRoom}
+              onJoinLobbyRoom={(id) => {
+                setRoomIdInput(id);
+                sendWithFeedback({ type: 'roomCommand', command: { type: 'JoinRoom', roomId: id as RoomId, displayName } });
+              }}
+              onLeaveRoom={leaveRoom}
               onSelectCharacter={selectCharacter}
               onSubmitSetupChoice={submitSetupChoice}
               onSetReady={setReady}

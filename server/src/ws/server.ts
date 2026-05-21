@@ -129,6 +129,9 @@ export class GameWebSocketServer {
     if (message.type === 'hello') {
       client.session.displayName = message.displayName?.trim() || client.session.displayName || '玩家';
       this.send(client, { type: 'hello', session: client.session.toView() });
+      if (!client.session.roomId) {
+        this.send(client, { type: 'lobbyView', rooms: this.rooms.getLobbyRooms() });
+      }
       this.ack(client, message.clientCommandId);
       return;
     }
@@ -216,6 +219,26 @@ export class GameWebSocketServer {
           this.reject(client, result.error, clientCommandId, runtimeResult.value.room.game?.version);
           return;
         }
+        this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
+        this.broadcastRoom(command.roomId);
+        this.persistNow();
+        return;
+      }
+      case 'LeaveRoom': {
+        const runtimeResult = this.rooms.getRuntime(command.roomId);
+        if (!runtimeResult.ok) {
+          this.reject(client, runtimeResult.error, clientCommandId);
+          return;
+        }
+        const result = runtimeResult.value.leave(client.session.userId);
+        if (!result.ok) {
+          this.reject(client, result.error, clientCommandId, runtimeResult.value.room.game?.version);
+          return;
+        }
+
+        client.session.roomId = undefined;
+        this.send(client, { type: 'leftRoom' });
+        this.send(client, { type: 'lobbyView', rooms: this.rooms.getLobbyRooms() });
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
         this.persistNow();
@@ -319,6 +342,16 @@ export class GameWebSocketServer {
 
     // 房间状态变化后立即落盘，避免“创建房间后 30 秒内服务重启/崩溃”导致重连找不到房间。
     this.persistNow();
+    this.broadcastLobby();
+  }
+
+  private broadcastLobby(): void {
+    const rooms = this.rooms.getLobbyRooms();
+    for (const client of this.clients) {
+      if (!client.session.roomId) {
+        this.send(client, { type: 'lobbyView', rooms });
+      }
+    }
   }
 
   private handleReconnect(client: ConnectedClient, userId: string, roomId: RoomId, clientCommandId?: string): void {

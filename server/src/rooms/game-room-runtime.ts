@@ -81,6 +81,41 @@ export class GameRoomRuntime {
     return ok(seat);
   }
 
+  leave(userId: UserId): DomainResult<void> {
+    const seatIndex = this.room.seats.findIndex((s) => s.userId === userId);
+    if (seatIndex === -1) return err('room.notJoined', '你不在该房间中');
+
+    if (this.room.status === 'lobby') {
+      // 游戏未开始，彻底移除该座位
+      this.room.seats.splice(seatIndex, 1);
+
+      // 如果是房主退出了
+      if (this.room.ownerUserId === userId) {
+        if (this.room.seats.length > 0) {
+          // 转移给下一个人
+          const nextHost = this.room.seats[0];
+          if (nextHost) {
+            this.room.ownerUserId = nextHost.userId;
+            nextHost.ready = true;
+          }
+        } else {
+          // 房间空了，标记为 closed
+          this.room.status = 'closed';
+        }
+      }
+    } else {
+      // 游戏中途退出，保留座位和玩家，仅标记为断线（相当于托管放弃操作）
+      const seat = this.room.seats[seatIndex];
+      if (seat) seat.connected = false;
+
+      const player = this.playerByUser(userId);
+      if (player) player.flags.leftGame = true; // leftGame 属性可以预留
+    }
+
+    this.touch();
+    return ok(undefined);
+  }
+
   setReady(userId: UserId, ready: boolean): DomainResult<void> {
     const seat = this.room.seats.find((item) => item.userId === userId);
     if (!seat) return err('room.notJoined', '你还未加入房间');

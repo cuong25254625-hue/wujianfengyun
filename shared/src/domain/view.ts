@@ -109,6 +109,15 @@ export interface PublicCurrentTransferView {
   settled: boolean;
 }
 
+export interface RoomSummary {
+  roomId: RoomId;
+  ownerName: string;
+  status: RoomStatus;
+  playerCount: number;
+  maxPlayers: number;
+  createdAt: number;
+}
+
 export interface SessionView {
   userId: UserId;
   displayName: string | undefined;

@@ -12,8 +12,10 @@ export type ClientMessage =
 export type ServerMessage =
   | { type: 'hello'; session: SessionView }
   | { type: 'roomView'; room: RoomView; session: SessionView }
+  | { type: 'lobbyView'; rooms: import('../domain/view.js').RoomSummary[] }
   | { type: 'roomCreated'; roomId: RoomId }
   | { type: 'joinedRoom'; roomId: RoomId }
+  | { type: 'leftRoom' }
   | { type: 'commandAck'; clientCommandId: string; roomVersion?: number }
   | { type: 'commandRejected'; clientCommandId?: string; error: DomainError; roomVersion?: number }
   | { type: 'error'; error: DomainError }
