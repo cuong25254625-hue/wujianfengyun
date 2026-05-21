@@ -60,13 +60,16 @@
   - 弥海砂开眼：新增主动查看隐藏角色能力
   - 贝尔摩德保密：被锁定时仅对贝尔摩德有效果（锁定目标无效但不扩展）
   - 史密斯夫妇谍战：可在 ReactionWindow 中改传递方（MVP简化为redirect transfer）
-- 新增 1 个测试（诸葛亮星标记），总测试数 92 → 93
-- Git 分支策略：master/main；npm run typecheck ✅；npm test ✅（93 测试）；npm run build ✅
+  - 川岛芳子交际+绝情增强
+- Git 分支策略：main；npm run typecheck ✅；npm test ✅（92 测试）；npm run build ✅
+
+## 2026-05-21 Worktree 提交丢失与恢复
+- 原始「第二批角色原规则还原」commit (7a94cfb) 在 `.claude/worktrees/` 临时目录中创建，worktree 清理后丢失
+- 整个实现从头重新编写（约 660 行 diff，14 个文件）
+- 最终 commit a938d54 已成功推送到 https://github.com/tianyu9527/wujianfengyun
+- 12 个 source files + 3 个 memory/docs files，661 insertions / 20 deletions
 
 ## 2026-05-21 自动提取
 - 用户优先要求优化手机端适配问题
-
-
-## 2026-05-21 自动提取
 - 游戏开发目标：将基础人物补完至 25 个（当前已实现 21 个）
 - 暂缓实现的 4 个角色：基德、狛枝凪斗、江之岛盾子、顾晓梦，原因是涉及替身、死后多窗口、绝望状态、遗志多回合判定等复杂机制，容易大改现有系统
