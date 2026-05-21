@@ -32,6 +32,8 @@ const commandLabel = (message: ClientMessage): string => {
       SubmitSetupChoice: '提交开局选项',
       SetReady: '准备状态',
       StartGame: '开始游戏',
+      ReturnToLobby: '返回房间等待区',
+      StartNextRound: '再来一局',
       GmForceAdvance: '强制推进',
       GmForceEnd: '强制结束',
     };
@@ -294,6 +296,17 @@ export default function App() {
     sendWithFeedback({ type: 'roomCommand', command: { type: 'StartGame', roomId: room.roomId } });
   };
 
+  const returnToLobby = () => {
+    if (!room) return;
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'ReturnToLobby', roomId: room.roomId } });
+  };
+
+  const startNextRound = () => {
+    if (!room) return;
+    if (!window.confirm('确定使用当前在线玩家和机器人直接开始下一局吗？断线玩家会被移出房间。')) return;
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'StartNextRound', roomId: room.roomId } });
+  };
+
   const gmForceAdvance = () => {
     if (!room) return;
     sendWithFeedback({ type: 'roomCommand', command: { type: 'GmForceAdvance', roomId: room.roomId } });
@@ -372,7 +385,7 @@ export default function App() {
             </div>
           )}
           <PlayerList room={room} session={session}>
-            {inGame && <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} mode="table" />}
+            {inGame && <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} onLeaveRoom={leaveRoom} onReturnToLobby={returnToLobby} onStartNextRound={startNextRound} mode="table" />}
           </PlayerList>
           {!inGame && <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} />}
         </section>

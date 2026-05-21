@@ -329,6 +329,39 @@ export class GameWebSocketServer {
         this.persistNow();
         return;
       }
+      case 'ReturnToLobby': {
+        const runtimeResult = this.rooms.getRuntime(command.roomId);
+        if (!runtimeResult.ok) {
+          this.reject(client, runtimeResult.error, clientCommandId);
+          return;
+        }
+        const result = runtimeResult.value.returnToLobby(client.session.userId);
+        if (!result.ok) {
+          this.reject(client, result.error, clientCommandId, runtimeResult.value.room.game?.version);
+          return;
+        }
+        this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
+        this.broadcastRoom(command.roomId);
+        this.persistNow();
+        return;
+      }
+      case 'StartNextRound': {
+        const runtimeResult = this.rooms.getRuntime(command.roomId);
+        if (!runtimeResult.ok) {
+          this.reject(client, runtimeResult.error, clientCommandId);
+          return;
+        }
+        const result = runtimeResult.value.startNextRound(client.session.userId);
+        if (!result.ok) {
+          this.reject(client, result.error, clientCommandId, runtimeResult.value.room.game?.version);
+          return;
+        }
+        this.ack(client, clientCommandId, result.value.version);
+        this.broadcastRoom(command.roomId);
+        this.runBotAutoplay(command.roomId);
+        this.persistNow();
+        return;
+      }
       case 'GmForceAdvance': {
         const runtimeResult = this.rooms.getRuntime(command.roomId);
         if (!runtimeResult.ok) {

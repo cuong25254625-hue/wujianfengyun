@@ -6,6 +6,9 @@ interface GameBoardProps {
   room: RoomView | undefined;
   session: SessionView | undefined;
   onPlayerCommand: (command: PlayerCommand) => void;
+  onLeaveRoom?: () => void;
+  onReturnToLobby?: () => void;
+  onStartNextRound?: () => void;
   mode?: 'panel' | 'table';
 }
 
@@ -25,7 +28,7 @@ const victoryReasonLabel: Record<string, string> = {
 const hasPrivateInfo = (player: unknown): player is PrivatePlayerView =>
   typeof player === 'object' && player !== null && 'regularSkills' in player && 'faction' in player;
 
-export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: GameBoardProps) {
+export function GameBoard({ room, session, onPlayerCommand, onLeaveRoom, onReturnToLobby, onStartNextRound, mode = 'panel' }: GameBoardProps) {
   const game = room?.game;
   const me = game?.players.find((player) => player.userId === session?.userId);
   const aliveTargets = useMemo(() => game?.players.filter((player) => player.aliveState === 'alive' && player.playerId !== me?.playerId) ?? [], [game, me]);
@@ -79,6 +82,8 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
 
   const hasProminentAction = pending || (game.phase.phase === 'TransferDeclare' && isMyTurn);
   const isTableMode = mode === 'table';
+  const isGameOver = game.status === 'finished' || game.phase.phase === 'GameOver';
+  const isOwner = room?.ownerUserId === session?.userId;
 
   return (
     <section className={`card game-card highlight ${isTableMode ? 'table-control-card' : ''}`}>
@@ -101,6 +106,21 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
         <p className="ok win-banner">
           游戏结束：{game.winner.faction === 'none' ? 'GM 强制结束' : `${factionLabel[game.winner.faction]}胜利`}（{victoryReasonLabel[game.winner.reason] ?? '达成胜利条件'}）
         </p>
+      )}
+
+      {isGameOver && (
+        <div className="subcard action-focus post-game-actions">
+          <h3>对局已结束</h3>
+          <p className="muted">
+            可以返回大厅加入其他房间；房主也可以把本房间恢复为等待区，或使用当前在线玩家和机器人直接再来一局。
+          </p>
+          <div className="actions">
+            {onLeaveRoom && <button onClick={onLeaveRoom}>返回大厅</button>}
+            {isOwner && onReturnToLobby && <button onClick={onReturnToLobby}>返回房间等待区</button>}
+            {isOwner && onStartNextRound && <button className="action-pulse" onClick={onStartNextRound}>再来一局</button>}
+          </div>
+          {!isOwner && <p className="muted">等待房主返回等待区或开始下一局。</p>}
+        </div>
       )}
 
       {game.finalPk && (
@@ -233,9 +253,9 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
           </div>
         )}
 
-        {!hasProminentAction && !game.winner && <p className="muted wait-tip">当前无需你操作，请观察牌桌和日志。</p>}
+        {!hasProminentAction && !game.winner && !isGameOver && <p className="muted wait-tip">当前无需你操作，请观察牌桌和日志。</p>}
 
-        <details className="subcard compact-details">
+        {!isGameOver && <details className="subcard compact-details">
           <summary>人物技能操作</summary>
           <SkillSelectors
             aliveTargets={aliveTargets}
@@ -260,7 +280,7 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
             {me.characterId === 'char_016_cc' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('shou_hu')}>守护</button>}
             {me.characterId === 'char_020_gasai_yuno' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('beng_huai', selectedSkillTarget)}>崩坏</button>}
           </div>
-        </details>
+        </details>}
       </div>
     </section>
   );

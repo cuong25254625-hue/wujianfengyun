@@ -1502,6 +1502,70 @@ describe('GameRoomRuntime', () => {
     });
   });
 
+  describe('post-game room lifecycle', () => {
+    it('returns a finished room to lobby and clears game setup state', () => {
+      const runtime = createStartedRuntime();
+      const ended = runtime.forceEndGame(userId(0));
+      expect(ended.ok).toBe(true);
+      const reset = runtime.returnToLobby(userId(0));
+      expect(reset.ok, errMsg(reset)).toBe(true);
+      expect(runtime.room.status).toBe('lobby');
+      expect(runtime.room.game).toBeUndefined();
+      expect(runtime.room.seats).toHaveLength(4);
+      expect(runtime.room.seats[0]?.ready).toBe(true);
+      expect(runtime.room.seats.slice(1).every((seat) => !seat.ready)).toBe(true);
+      expect(runtime.room.seats.every((seat) => !seat.playerId && !seat.characterOptionIds && !seat.selectedCharacterId)).toBe(true);
+    });
+
+    it('starts a fresh next round from a finished room', () => {
+      const runtime = createStartedRuntime();
+      const oldPlayerIds = runtime.room.seats.map((seat) => seat.playerId);
+      const ended = runtime.forceEndGame(userId(0));
+      expect(ended.ok).toBe(true);
+      const next = runtime.startNextRound(userId(0));
+      expect(next.ok, errMsg(next)).toBe(true);
+      expect(runtime.room.status).toBe('playing');
+      expect(runtime.room.game?.status).toBe('setup');
+      expect(runtime.room.game?.setupState?.step).toBe('characterSelection');
+      expect(runtime.room.seats.map((seat) => seat.playerId)).not.toEqual(oldPlayerIds);
+    });
+
+    it('removes seats on leave after game over and transfers host', () => {
+      const runtime = createStartedRuntime();
+      expect(runtime.forceEndGame(userId(0)).ok).toBe(true);
+      const leave = runtime.leave(userId(0));
+      expect(leave.ok, errMsg(leave)).toBe(true);
+      expect(runtime.room.seats.some((seat) => seat.userId === userId(0))).toBe(false);
+      expect(runtime.room.ownerUserId).toBe(userId(1));
+      expect(runtime.room.status).toBe('finished');
+    });
+
+    it('prunes disconnected humans but keeps bots when returning to lobby', () => {
+      const runtime = createStartedRuntime();
+      runtime.room.seats.push({ seatIndex: 4, userId: 'bot_test' as UserId, displayName: '机器人', ready: true, connected: true, isBot: true });
+      expect(runtime.forceEndGame(userId(0)).ok).toBe(true);
+      runtime.setConnected(userId(2), false);
+      const reset = runtime.returnToLobby(userId(0));
+      expect(reset.ok, errMsg(reset)).toBe(true);
+      expect(runtime.room.seats.some((seat) => seat.userId === userId(2))).toBe(false);
+      expect(runtime.room.seats.some((seat) => seat.userId === ('bot_test' as UserId) && seat.ready && seat.connected)).toBe(true);
+    });
+
+    it('rejects post-game commands from non-owners or non-finished rooms', () => {
+      const runtime = createStartedRuntime();
+      const early = runtime.returnToLobby(userId(0));
+      expect(early.ok).toBe(false);
+      expect(errCode(early)).toBe('room.notFinished');
+      expect(runtime.forceEndGame(userId(0)).ok).toBe(true);
+      const nonOwnerReset = runtime.returnToLobby(userId(1));
+      expect(nonOwnerReset.ok).toBe(false);
+      expect(errCode(nonOwnerReset)).toBe('room.notOwner');
+      const nonOwnerNext = runtime.startNextRound(userId(1));
+      expect(nonOwnerNext.ok).toBe(false);
+      expect(errCode(nonOwnerNext)).toBe('room.notOwner');
+    });
+  });
+
   describe('5-8 player game', () => {
     it('supports a full transfer cycle for 5 players', () => {
       const runtime = createStartedRuntime(5);

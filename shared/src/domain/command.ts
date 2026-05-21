@@ -89,5 +89,7 @@ export type RoomClientCommand =
   | { type: 'SubmitSetupChoice'; roomId: RoomId; choiceKey: 'ccMissionTarget'; targetPlayerId: PlayerId }
   | { type: 'SetReady'; roomId: RoomId; ready: boolean }
   | { type: 'StartGame'; roomId: RoomId }
+  | { type: 'ReturnToLobby'; roomId: RoomId }
+  | { type: 'StartNextRound'; roomId: RoomId }
   | { type: 'GmForceAdvance'; roomId: RoomId }
   | { type: 'GmForceEnd'; roomId: RoomId };

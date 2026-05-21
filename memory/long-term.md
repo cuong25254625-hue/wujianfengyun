@@ -10,3 +10,4 @@
 - 验证：npm run typecheck ✅；npm test ✅（71 测试）；npm run build ✅。
 - 新增测试机器人：房主可在等待开局阶段添加机器人；机器人座位默认在线且已准备；游戏开始后机器人会自动选第一个候选角色、跳过宣胜/技能响应、默认传递真情报给第一名可选存活玩家、默认接收情报、濒死默认跳过，方便单人/少人流程测试。
 - 机器人响应窗口卡住修复：创建待响应窗口时先进入正确 phase，再创建 pending action；`openPendingAction` 会立即让机器人自动 pass，`maybeResolveReaction` 兜底处理机器人 pass。房主新增 GM 工具条，可强制推进阶段或强制结束游戏。
+- 游戏结束后继续游戏流程：新增 `ReturnToLobby` 和 `StartNextRound`。GameOver 页面中所有人可返回大厅；房主可返回房间等待区或直接再来一局。`finished` 状态下 LeaveRoom 会移除座位并转移房主；返回等待区/再来一局会移除断线真人、保留机器人、清理旧 playerId/选角信息。

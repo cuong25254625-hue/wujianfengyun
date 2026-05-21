@@ -164,12 +164,13 @@ export function RoomPanel(props: RoomPanelProps) {
             </div>
           )}
           <div className="actions">
-            <button onClick={() => props.onSetReady(!mySeat?.ready)}>{mySeat?.ready ? '取消准备' : '准备'}</button>
+            {room.status === 'lobby' && <button onClick={() => props.onSetReady(!mySeat?.ready)}>{mySeat?.ready ? '取消准备' : '准备'}</button>}
             {isOwner && room.status === 'lobby' && room.seats.length < 8 && <button onClick={props.onAddBot}>添加机器人</button>}
-            {isOwner && room.seats.every(s => s.ready || s.userId === session?.userId) && <button onClick={props.onStartGame} className="action-pulse">开始游戏</button>}
-            {isOwner && !room.seats.every(s => s.ready || s.userId === session?.userId) && <button disabled>等待玩家准备</button>}
+            {isOwner && room.status === 'lobby' && room.seats.every(s => s.ready || s.userId === session?.userId) && <button onClick={props.onStartGame} className="action-pulse">开始游戏</button>}
+            {isOwner && room.status === 'lobby' && !room.seats.every(s => s.ready || s.userId === session?.userId) && <button disabled>等待玩家准备</button>}
             <button onClick={props.onLeaveRoom} className="leave-button">退出房间</button>
             {!isOwner && room.status === 'lobby' && <span className="muted">等待房主开始游戏{hostSeat?.connected ? '' : '（房主离线，将在断线后自动转移给在线玩家）'}</span>}
+            {room.status === 'finished' && <span className="muted">对局已结束，请在牌桌中选择返回大厅或等待房主处理下一局。</span>}
           </div>
         </div>
       )}

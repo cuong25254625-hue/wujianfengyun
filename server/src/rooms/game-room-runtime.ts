@@ -101,23 +101,14 @@ export class GameRoomRuntime {
     const seatIndex = this.room.seats.findIndex((s) => s.userId === userId);
     if (seatIndex === -1) return err('room.notJoined', '你不在该房间中');
 
-    if (this.room.status === 'lobby') {
-      // 游戏未开始，彻底移除该座位
+    if (this.room.status === 'lobby' || this.room.status === 'finished') {
+      // 等待区/已结束：彻底移除该座位。finished 仍保留 game 供剩余玩家查看结算。
       this.room.seats.splice(seatIndex, 1);
 
-      // 如果是房主退出了
-      if (this.room.ownerUserId === userId) {
-        if (this.room.seats.length > 0) {
-          // 转移给下一个人
-          const nextHost = this.room.seats[0];
-          if (nextHost) {
-            this.room.ownerUserId = nextHost.userId;
-            nextHost.ready = true;
-          }
-        } else {
-          // 房间空了，标记为 closed
-          this.room.status = 'closed';
-        }
+      if (this.room.seats.length === 0) {
+        this.room.status = 'closed';
+      } else if (this.room.ownerUserId === userId) {
+        this.pickNextHost();
       }
     } else {
       // 游戏中途退出，保留座位和玩家，仅标记为断线（相当于托管放弃操作）
@@ -223,34 +214,57 @@ export class GameRoomRuntime {
 
   /**
    * 将房主转移到其他已连接玩家。
-   * 当房主断线时调用，保证房间始终有人可以开始游戏或推进。
+   * 等待区和已结束房间允许转移；游戏进行中不转移，避免影响对局权限。
    */
   transferHost(fromUserId: UserId): DomainResult<UserId> {
     if (this.room.ownerUserId !== fromUserId) return err('room.notOwner', '你不是房主');
-    if (this.room.status !== 'lobby') {
-      // 游戏中房主断线不转移：游戏中不需要房主权限（GM forceAdvance 不依赖 owner）
+    if (this.room.status === 'playing') {
       return ok(fromUserId);
     }
 
-    // 优先选择已连接的玩家，其次选择已准备的玩家
-    const candidates = this.room.seats.filter((s) => s.userId !== fromUserId);
-    if (candidates.length === 0) {
-      // 只剩房主一人断线 — 房主不变，等房主重连
-      return ok(fromUserId);
-    }
-
-    const nextHost = candidates.find((s) => s.connected) ?? candidates.find((s) => s.ready) ?? candidates[0];
+    const nextHost = this.pickNextHost(fromUserId);
     if (!nextHost) return ok(fromUserId);
-    this.room.ownerUserId = nextHost.userId;
-    nextHost.ready = true; // 新房主默认准备
     this.touch();
-    console.log(`[host] 房主从 ${fromUserId} 转移到 ${nextHost.userId}（${nextHost.displayName}）`);
-    return ok(nextHost.userId);
+    console.log(`[host] 房主从 ${fromUserId} 转移到 ${nextHost}（${this.room.seats.find((seat) => seat.userId === nextHost)?.displayName ?? nextHost}）`);
+    return ok(nextHost);
   }
 
   /** 是否有连接的玩家。用于判断空房间清理。 */
   hasConnectedPlayers(): boolean {
     return this.room.seats.some((s) => s.connected);
+  }
+
+  returnToLobby(userId: UserId): DomainResult<void> {
+    if (userId !== this.room.ownerUserId) return err('room.notOwner', '只有房主可以返回房间等待区');
+    if (this.room.status !== 'finished') return err('room.notFinished', '只有已结束的房间可以返回等待区');
+
+    const reset = this.resetFinishedRoomSeats();
+    if (!reset.ok) return reset;
+    if (this.room.seats.length === 0) {
+      this.room.status = 'closed';
+      this.touch();
+      return ok(undefined);
+    }
+
+    delete this.room.game;
+    this.room.status = 'lobby';
+    this.touch();
+    return ok(undefined);
+  }
+
+  startNextRound(userId: UserId): DomainResult<GameState> {
+    if (userId !== this.room.ownerUserId) return err('room.notOwner', '只有房主可以开始下一局');
+    if (this.room.status !== 'finished') return err('room.notFinished', '只有已结束的房间可以再来一局');
+
+    const reset = this.resetFinishedRoomSeats();
+    if (!reset.ok) return reset;
+    if (!isSupportedPlayerCount(this.room.seats.length)) return err('room.unsupportedPlayerCount', 'MVP 支持 4-8 人开局');
+
+    const game = this.createInitialGameState();
+    this.room.game = game;
+    this.room.status = 'playing';
+    this.touch();
+    return ok(game);
   }
 
   startGame(userId: UserId): DomainResult<GameState> {
@@ -1641,6 +1655,41 @@ export class GameRoomRuntime {
       default:
         return ok(this.advanceTurn(game));
     }
+  }
+
+  private pickNextHost(excludeUserId?: UserId): UserId | undefined {
+    const candidates = this.room.seats.filter((seat) => seat.userId !== excludeUserId);
+    const nextHost = candidates.find((seat) => seat.connected && !seat.isBot)
+      ?? candidates.find((seat) => seat.connected)
+      ?? candidates.find((seat) => seat.ready)
+      ?? candidates[0];
+    if (!nextHost) return undefined;
+    this.room.ownerUserId = nextHost.userId;
+    nextHost.ready = true;
+    return nextHost.userId;
+  }
+
+  private resetFinishedRoomSeats(): DomainResult<void> {
+    if (this.room.status !== 'finished') return err('room.notFinished', '只有已结束的房间可以重置');
+
+    this.room.seats = this.room.seats.filter((seat) => seat.isBot || seat.connected);
+    if (this.room.seats.length === 0) return ok(undefined);
+
+    if (!this.room.seats.some((seat) => seat.userId === this.room.ownerUserId)) {
+      this.pickNextHost();
+    }
+
+    this.room.seats.sort((left, right) => left.seatIndex - right.seatIndex);
+    this.room.seats.forEach((seat, index) => {
+      seat.seatIndex = index;
+      delete seat.playerId;
+      delete seat.characterOptionIds;
+      delete seat.selectedCharacterId;
+      delete seat.characterPreferenceId;
+      seat.connected = seat.isBot ? true : seat.connected;
+      seat.ready = Boolean(seat.isBot || seat.userId === this.room.ownerUserId);
+    });
+    return ok(undefined);
   }
 
   private createSeat(seatIndex: number, userId: UserId, displayName: string, ownerUserId = this.room.ownerUserId): RoomSeat {
