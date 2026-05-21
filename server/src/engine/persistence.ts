@@ -60,7 +60,7 @@ export function saveRooms(rooms: Map<string, GameRoom>): void {
   initPersistence();
 
   try {
-    const data = [...rooms.values()];
+    const data = [...rooms.values()].filter((room) => room.status !== 'closed');
     // 原子写入：先写临时文件再重命名
     const tmp = `${ROOMS_FILE}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(data, replacer), 'utf-8');

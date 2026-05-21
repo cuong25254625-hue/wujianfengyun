@@ -234,6 +234,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.persistNow();
         return;
       }
       case 'SubmitSetupChoice': {
@@ -249,6 +250,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.persistNow();
         return;
       }
       case 'SetReady': {
@@ -264,6 +266,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.persistNow();
         return;
       }
       case 'StartGame': {
@@ -279,6 +282,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.persistNow();
         return;
       }
       case 'GmForceAdvance': {
@@ -294,6 +298,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.persistNow();
         return;
       }
     }

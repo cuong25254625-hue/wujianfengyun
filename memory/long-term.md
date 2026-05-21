@@ -156,3 +156,10 @@
 - 服务端修复：`GameWebSocketServer.broadcastRoom()` 后立即 `saveRooms()`，创建/加入/准备/房主转移/断线状态等房间变更会立即落盘，消除 30 秒丢房窗口。
 - 客户端修复：新增 `WsClient.forgetRoom()`，当收到 `room.notFound`、`reconnect.seatNotFound`、`sync.notInRoom` 时清除本机保存的旧 roomId 和相关待发同步/重连消息，避免反复重连一个已经不存在的旧房间。
 - 验证：`npm run typecheck` ✅；`npm test` ✅（71 测试）；`npm run build` ✅。
+
+## 2026-05-21 创建房间后立即重连二次修复
+- 根因：`App.tsx` 的 WebSocket 订阅 effect 依赖 `pendingLabels`，提交/ACK 会导致 effect 反复清理和重建；重建时立刻收到当前连接状态，容易在刚创建房间时误显示 reconnect/closed。
+- 根因：重连中 pending `requestSync` 可能早于 `reconnect` 成功后的 `roomView` 发送，服务端按临时 userId 判定 `sync.notInRoom`，客户端随后过度清理本地房间记录。
+- 修复：用 `pendingLabelsRef` 替代 state 依赖，effect 只依赖 `[client]`；新增 `activeRoomIdRef` 记录当前房间号；`WsClient` 在 `reconnectInFlight` 期间暂停 `requestSync`/pending flush，等 `roomView` 后再刷新；客户端只在 `reconnect.seatNotFound` 时清房间，不再因普通 `room.notFound`/`sync.notInRoom` 清除本地 roomId。
+- 持久化补强：`saveRooms` 过滤 `closed` 房间，避免关闭房间继续落盘恢复。
+- 验证：`npm run typecheck` ✅；`npm test` ✅（71 测试）；`npm run build` ✅。

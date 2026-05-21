@@ -68,6 +68,7 @@ export class WsClient {
 
     this.connectUrl = url;
     this.stopReconnectTimer();
+    this.reconnectTimer = undefined;
     this.setStatus(this.wasOpen ? 'reconnecting' : 'connecting');
     this.socket = new WebSocket(url);
 
@@ -76,7 +77,8 @@ export class WsClient {
       this.wasOpen = true;
       this.setStatus('open');
 
-      // 重连成功后，先发送 reconnect 恢复会话，再刷新待发消息
+      // 重连成功后，先发送 reconnect 恢复会话；等待 roomView/失败响应后再刷新待发消息。
+      // 这样可避免刚建房后的 pending requestSync 先于 reconnect 到达，触发 room.notFound/sync.notInRoom 误清房间。
       if (this.reconnectUserId && this.reconnectRoomId) {
         this.reconnectInFlight = true;
         this.socket?.send(JSON.stringify({
@@ -84,14 +86,15 @@ export class WsClient {
           userId: this.reconnectUserId,
           roomId: this.reconnectRoomId,
         } satisfies ClientMessage));
-      } else if (this.displayName) {
-        this.socket?.send(JSON.stringify({ type: 'hello', displayName: this.displayName } satisfies ClientMessage));
       } else {
-        // 全新用户，发送空 hello 让服务器分配 userId
-        this.socket?.send(JSON.stringify({ type: 'hello' } satisfies ClientMessage));
+        if (this.displayName) {
+          this.socket?.send(JSON.stringify({ type: 'hello', displayName: this.displayName } satisfies ClientMessage));
+        } else {
+          // 全新用户，发送空 hello 让服务器分配 userId
+          this.socket?.send(JSON.stringify({ type: 'hello' } satisfies ClientMessage));
+        }
+        this.flushPendingMessages();
       }
-
-      this.flushPendingMessages();
     });
 
     this.socket.addEventListener('close', () => {
@@ -132,15 +135,20 @@ export class WsClient {
       }
       if (msg.type === 'roomView') {
         // 收到房间视图说明 reconnect 成功（或正常进入房间）
+        const wasReconnecting = this.reconnectInFlight;
         this.reconnectInFlight = false;
         this.reconnectUserId = msg.session.userId;
         this.reconnectRoomId = msg.room.roomId;
         this.displayName = msg.session.displayName;
         this.persistSession();
+        if (wasReconnecting) this.flushPendingMessages();
       }
       if (msg.type === 'commandRejected' || msg.type === 'error') {
-        // reconnect 失败时清除标记，让后续 hello 可以正常更新
-        this.reconnectInFlight = false;
+        // 仅在座位恢复明确失败时结束 reconnect；普通 requestSync/room.notFound 不应打断重连流程。
+        if (msg.type === 'commandRejected' && msg.error.code === 'reconnect.seatNotFound') {
+          this.reconnectInFlight = false;
+          this.flushPendingMessages();
+        }
       }
       this.handlers.forEach((handler) => handler(msg));
     });
@@ -177,6 +185,8 @@ export class WsClient {
   requestSync(roomId?: RoomId): void {
     const targetRoomId = roomId ?? this.reconnectRoomId;
     if (!targetRoomId) return;
+    // reconnect 尚未恢复座位前，不主动插入 requestSync，避免请求先于 reconnect 到达造成误判。
+    if (this.reconnectInFlight) return;
     this.send({ type: 'requestSync', roomId: targetRoomId });
   }
 

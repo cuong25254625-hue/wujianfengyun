@@ -66,9 +66,10 @@ export default function App() {
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [reconnectMax, setReconnectMax] = useState(12);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-  const [pendingLabels, setPendingLabels] = useState<Record<string, string>>({});
+  const pendingLabelsRef = useRef<Record<string, string>>({});
   const wasReconnecting = useRef(false);
   const previousOwnerUserId = useRef<string | undefined>();
+  const activeRoomIdRef = useRef<string | undefined>(persistedSession.roomId);
 
   const pushToast = (kind: ToastKind, message: string) => {
     const id = `toast_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -83,7 +84,7 @@ export default function App() {
     const withId = { ...message, clientCommandId } as ClientMessage;
     if (feedback) {
       const label = commandLabel(message);
-      setPendingLabels((items) => ({ ...items, [clientCommandId]: label }));
+      pendingLabelsRef.current = { ...pendingLabelsRef.current, [clientCommandId]: label };
       pushToast('info', `${label}已提交`);
     }
     client.send(withId);
@@ -100,47 +101,52 @@ export default function App() {
           if (newHost) pushToast('info', `房主已转移：${newHost.displayName}`);
         }
         previousOwnerUserId.current = message.room.ownerUserId;
+        activeRoomIdRef.current = message.room.roomId;
         setRoom(message.room);
         setSession(message.session);
       }
-      if (message.type === 'roomCreated') setRoomIdInput(message.roomId);
-      if (message.type === 'joinedRoom') setRoomIdInput(message.roomId);
+      if (message.type === 'roomCreated') {
+        activeRoomIdRef.current = message.roomId;
+        setRoomIdInput(message.roomId);
+      }
+      if (message.type === 'joinedRoom') {
+        activeRoomIdRef.current = message.roomId;
+        setRoomIdInput(message.roomId);
+      }
       if (message.type === 'commandAck') {
-        const label = pendingLabels[message.clientCommandId] ?? '操作';
-        setPendingLabels((items) => {
-          const next = { ...items };
-          delete next[message.clientCommandId];
-          return next;
-        });
+        const label = pendingLabelsRef.current[message.clientCommandId] ?? '操作';
+        const next = { ...pendingLabelsRef.current };
+        delete next[message.clientCommandId];
+        pendingLabelsRef.current = next;
         pushToast('success', `${label}成功`);
       }
       if (message.type === 'commandRejected') {
         const rejectedCommandId = message.clientCommandId;
-        const label = rejectedCommandId ? pendingLabels[rejectedCommandId] : '操作';
+        const label = rejectedCommandId ? pendingLabelsRef.current[rejectedCommandId] : '操作';
         if (rejectedCommandId) {
-          setPendingLabels((items) => {
-            const next = { ...items };
-            delete next[rejectedCommandId];
-            return next;
-          });
+          const next = { ...pendingLabelsRef.current };
+          delete next[rejectedCommandId];
+          pendingLabelsRef.current = next;
         }
-        if (message.error.code === 'room.notFound' || message.error.code === 'reconnect.seatNotFound' || message.error.code === 'sync.notInRoom') {
+        if (message.error.code === 'reconnect.seatNotFound') {
           client.forgetRoom();
+          activeRoomIdRef.current = undefined;
           setRoom(undefined);
           setRoomIdInput('');
           previousOwnerUserId.current = undefined;
-          pushToast('warning', '原房间已不存在，已清除本机保存的房间记录');
+          pushToast('warning', '未找到你的座位，已清除本机保存的房间记录');
         }
         pushToast('error', `${label}失败：${message.error.message}`);
         setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
       }
       if (message.type === 'error') {
-        if (message.error.code === 'room.notFound' || message.error.code === 'reconnect.seatNotFound' || message.error.code === 'sync.notInRoom') {
+        if (message.error.code === 'reconnect.seatNotFound') {
           client.forgetRoom();
+          activeRoomIdRef.current = undefined;
           setRoom(undefined);
           setRoomIdInput('');
           previousOwnerUserId.current = undefined;
-          pushToast('warning', '原房间已不存在，已清除本机保存的房间记录');
+          pushToast('warning', '未找到你的座位，已清除本机保存的房间记录');
         }
         pushToast('error', message.error.message);
         setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
@@ -159,8 +165,9 @@ export default function App() {
         }
         // open 后总是检查是否有待恢复的房间（覆盖页面刷新/断线重连两种场景）
         const sessionData = client.persistedSession;
-        if (sessionData.roomId) {
-          client.requestSync(sessionData.roomId);
+        const targetRoomId = activeRoomIdRef.current ?? sessionData.roomId;
+        if (targetRoomId) {
+          client.requestSync(targetRoomId as RoomId);
         }
       }
       if (status === 'error') {
@@ -181,7 +188,7 @@ export default function App() {
       offMessage();
       offStatus();
     };
-  }, [client, pendingLabels]);
+  }, [client]);
 
   const sendHello = () => sendWithFeedback({ type: 'hello', displayName }, false);
 
