@@ -27,6 +27,7 @@ const commandLabel = (message: ClientMessage): string => {
       CreateRoom: '创建房间',
       JoinRoom: '加入房间',
       UpdateDisplayName: '同步昵称',
+      AddBot: '添加机器人',
       SelectCharacter: '选择角色',
       SubmitSetupChoice: '提交开局选项',
       SetReady: '准备状态',
@@ -266,6 +267,11 @@ export default function App() {
     sendWithFeedback({ type: 'roomCommand', command: { type: 'LeaveRoom', roomId: room.roomId } });
   };
 
+  const addBot = () => {
+    if (!room) return;
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'AddBot', roomId: room.roomId } });
+  };
+
   const selectCharacter = (characterId: CharacterId) => {
     if (!room) return;
     sendWithFeedback({ type: 'roomCommand', command: { type: 'SelectCharacter', roomId: room.roomId, characterId } });
@@ -338,6 +344,7 @@ export default function App() {
                 sendWithFeedback({ type: 'roomCommand', command: { type: 'JoinRoom', roomId: id as RoomId, displayName } });
               }}
               onLeaveRoom={leaveRoom}
+              onAddBot={addBot}
               onSelectCharacter={selectCharacter}
               onSubmitSetupChoice={submitSetupChoice}
               onSetReady={setReady}

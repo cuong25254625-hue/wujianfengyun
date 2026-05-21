@@ -60,6 +60,22 @@ export class GameRoomRuntime {
     };
   }
 
+  addBot(requestUserId: UserId): DomainResult<RoomSeat> {
+    if (requestUserId !== this.room.ownerUserId) return err('room.notOwner', '只有房主可以添加机器人');
+    if (this.room.status !== 'lobby') return err('room.alreadyStarted', '游戏开始后不能添加机器人');
+    if (this.room.seats.length >= 8) return err('room.full', '房间已满，MVP 最多支持 8 人');
+
+    const botNumber = this.room.seats.filter((seat) => seat.isBot).length + 1;
+    const userId = `bot_${this.room.roomId}_${botNumber}` as UserId;
+    const seat = this.createSeat(this.nextSeatIndex(), userId, `机器人${botNumber}`);
+    seat.ready = true;
+    seat.connected = true;
+    seat.isBot = true;
+    this.room.seats.push(seat);
+    this.touch();
+    return ok(seat);
+  }
+
   join(input: JoinRoomInput): DomainResult<RoomSeat> {
     const existing = this.room.seats.find((seat) => seat.userId === input.userId);
     if (existing) {
@@ -141,6 +157,7 @@ export class GameRoomRuntime {
     seat.selectedCharacterId = character.characterId;
     this.addLog(game, 'character.selectionReady', { player: seat.displayName });
 
+    this.autoSelectBotCharacters(game);
     const allSelected = this.room.seats.every((item) => Boolean(item.selectedCharacterId));
     if (allSelected) this.finalizeCharacterSelection(game);
 
@@ -196,7 +213,11 @@ export class GameRoomRuntime {
   setConnected(userId: UserId, connected: boolean): void {
     const seat = this.room.seats.find((item) => item.userId === userId);
     if (!seat) return;
-    seat.connected = connected;
+    if (seat.isBot) {
+      seat.connected = true;
+    } else {
+      seat.connected = connected;
+    }
     this.touch();
   }
 
@@ -1076,7 +1097,22 @@ export class GameRoomRuntime {
       winState: { finished: false },
       version: events.length,
     };
+    this.autoSelectBotCharacters(state);
+    if (this.room.seats.every((item) => Boolean(item.selectedCharacterId))) this.finalizeCharacterSelection(state);
     return state;
+  }
+
+  private autoSelectBotCharacters(game: GameState): void {
+    for (const seat of this.room.seats) {
+      if (!seat.isBot || seat.selectedCharacterId) continue;
+      const firstOption = seat.characterOptionIds?.[0];
+      if (!firstOption) continue;
+      seat.selectedCharacterId = firstOption;
+      if (seat.playerId) {
+        const player = game.players[seat.playerId];
+        if (player) this.addLog(game, 'bot.characterSelected', { player: player.displayName });
+      }
+    }
   }
 
   private finalizeCharacterSelection(game: GameState): void {
@@ -1400,6 +1436,104 @@ export class GameRoomRuntime {
   private allRequiredResponded(action: PendingAction): boolean {
     const required = action.requiredPlayerIds ?? action.eligiblePlayerIds;
     return required.every((playerId) => action.responses.some((response) => response.playerId === playerId));
+  }
+
+  /**
+   * 让机器人执行当前阶段的默认操作。
+   * 机器人策略先保持极简：自动选第一个角色、跳过宣胜/技能响应、默认传真情报、默认接收。
+   * 返回值表示是否对房间状态产生了变更，便于网关决定是否再次广播。
+   */
+  autoPlayBots(): boolean {
+    const game = this.room.game;
+    if (!game || this.room.status !== 'playing' || game.status === 'finished') return false;
+
+    let changed = false;
+    for (let guard = 0; guard < 80; guard += 1) {
+      const beforeVersion = game.version;
+      const beforePhase = game.phase.phase;
+      const beforeTurnSerial = game.turn.turnSerial;
+
+      if (game.status === 'setup') {
+        if (game.setupState?.step === 'characterSelection') {
+          this.autoSelectBotCharacters(game);
+          if (this.room.seats.every((item) => Boolean(item.selectedCharacterId))) this.finalizeCharacterSelection(game);
+        } else if (game.setupState?.step === 'openingOptions') {
+          for (const playerId of [...game.setupState.requiredPlayerIds]) {
+            if (game.setupState.completedPlayerIds.includes(playerId)) continue;
+            const player = game.players[playerId];
+            const seat = player ? this.room.seats.find((item) => item.userId === player.userId) : undefined;
+            if (!player || !seat?.isBot) continue;
+            const target = Object.values(game.players).find((item) => item.aliveState === 'alive' && item.playerId !== playerId);
+            if (!target) continue;
+            player.flags.cc_mission_target = target.playerId;
+            game.setupState.completedPlayerIds.push(playerId);
+            this.addPrivateLog(game, playerId, 'mission.ccTargetSelected', { player: player.displayName, target: target.displayName });
+            this.addLog(game, 'bot.setupChoiceSubmitted', { player: player.displayName });
+            this.resolveSetupChoiceAction(game, playerId, target.playerId);
+          }
+          if (game.setupState.requiredPlayerIds.every((id) => game.setupState?.completedPlayerIds.includes(id))) {
+            this.startFirstTurnAfterSetup(game);
+          }
+        }
+      } else if (game.status === 'running') {
+        const active = (() => {
+          try { return this.activePlayer(game); } catch { return undefined; }
+        })();
+        const activeSeat = active ? this.room.seats.find((item) => item.userId === active.userId) : undefined;
+
+        if (game.phase.phase === 'VictoryDeclareWindow') {
+          const action = this.openActionByKind(game, 'victoryDeclareWindow');
+          if (action) {
+            const botIds = action.eligiblePlayerIds.filter((id) => {
+              const player = game.players[id];
+              const seat = player ? this.room.seats.find((item) => item.userId === player.userId) : undefined;
+              return Boolean(seat?.isBot) && !action.responses.some((response) => response.playerId === id);
+            });
+            for (const botId of botIds) this.handlePass(game, botId, action.pendingActionId as PendingActionId);
+          }
+        } else if (game.phase.phase === 'SkillWindow') {
+          const action = this.openActionByKind(game, 'regularSkillWindow');
+          if (action && activeSeat?.isBot && active && action.eligiblePlayerIds.includes(active.playerId)) {
+            this.handlePass(game, active.playerId, action.pendingActionId as PendingActionId);
+          }
+        } else if (game.phase.phase === 'TransferDeclare') {
+          if (activeSeat?.isBot && active) {
+            const target = Object.values(game.players).find((item) => item.aliveState === 'alive' && item.playerId !== active.playerId);
+            if (target) this.handleDeclareTransfer(game, active.playerId, target.playerId, 'true');
+            else this.advanceTurn(game);
+          }
+        } else if (game.phase.phase === 'ReactionWindow') {
+          const action = this.openActionByKind(game, 'regularSkillWindow');
+          if (action) {
+            const botIds = action.eligiblePlayerIds.filter((id) => {
+              const player = game.players[id];
+              const seat = player ? this.room.seats.find((item) => item.userId === player.userId) : undefined;
+              return Boolean(seat?.isBot) && !action.responses.some((response) => response.playerId === id);
+            });
+            for (const botId of botIds) this.handlePass(game, botId, action.pendingActionId as PendingActionId);
+          }
+        } else if (game.phase.phase === 'ReceiveDecision') {
+          const transfer = game.currentTransfer;
+          const receiverId = transfer?.finalReceiverPlayerId ?? transfer?.targetPlayerId;
+          const receiver = receiverId ? game.players[receiverId] : undefined;
+          const receiverSeat = receiver ? this.room.seats.find((item) => item.userId === receiver.userId) : undefined;
+          if (transfer && receiver && receiverSeat?.isBot) this.handleReceiveInfo(game, receiver.playerId, transfer.transferId, 'receive');
+        } else if (game.phase.phase === 'DyingWindow') {
+          const dyingId = game.phase.context.type === 'dying' ? game.phase.context.playerId : undefined;
+          const dying = dyingId ? game.players[dyingId] : undefined;
+          const dyingSeat = dying ? this.room.seats.find((item) => item.userId === dying.userId) : undefined;
+          const action = this.openActionByKind(game, 'dyingSkillWindow');
+          if (dying && dyingSeat?.isBot && action) this.handlePass(game, dying.playerId, action.pendingActionId as PendingActionId);
+        }
+      }
+
+      const didChange = beforeVersion !== game.version || beforePhase !== game.phase.phase || beforeTurnSerial !== game.turn.turnSerial;
+      changed = changed || didChange;
+      if (!didChange) break;
+    }
+
+    if (changed) this.touch();
+    return changed;
   }
 
   /**

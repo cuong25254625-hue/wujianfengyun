@@ -83,6 +83,7 @@ export type RoomClientCommand =
   | { type: 'CreateRoom'; displayName: string }
   | { type: 'JoinRoom'; roomId: RoomId; displayName: string }
   | { type: 'LeaveRoom'; roomId: RoomId }
+  | { type: 'AddBot'; roomId: RoomId }
   | { type: 'UpdateDisplayName'; roomId: RoomId; displayName: string }
   | { type: 'SelectCharacter'; roomId: RoomId; characterId: CharacterId }
   | { type: 'SubmitSetupChoice'; roomId: RoomId; choiceKey: 'ccMissionTarget'; targetPlayerId: PlayerId }

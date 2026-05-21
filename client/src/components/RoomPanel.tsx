@@ -15,6 +15,7 @@ interface RoomPanelProps {
   onJoinRoom: () => void;
   onJoinLobbyRoom: (roomId: string) => void;
   onLeaveRoom: () => void;
+  onAddBot: () => void;
   onSelectCharacter: (characterId: CharacterId) => void;
   onSubmitSetupChoice: (choiceKey: 'ccMissionTarget', targetPlayerId: PlayerId) => void;
   onSetReady: (ready: boolean) => void;
@@ -164,6 +165,7 @@ export function RoomPanel(props: RoomPanelProps) {
           )}
           <div className="actions">
             <button onClick={() => props.onSetReady(!mySeat?.ready)}>{mySeat?.ready ? '取消准备' : '准备'}</button>
+            {isOwner && room.status === 'lobby' && room.seats.length < 8 && <button onClick={props.onAddBot}>添加机器人</button>}
             {isOwner && room.seats.every(s => s.ready || s.userId === session?.userId) && <button onClick={props.onStartGame} className="action-pulse">开始游戏</button>}
             {isOwner && !room.seats.every(s => s.ready || s.userId === session?.userId) && <button disabled>等待玩家准备</button>}
             <button onClick={props.onLeaveRoom} className="leave-button">退出房间</button>

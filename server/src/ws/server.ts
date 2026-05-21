@@ -171,6 +171,7 @@ export class GameWebSocketServer {
     const roomVersion = runtimeResult.value.room.game?.version;
     this.ack(client, clientCommandId, roomVersion);
     this.broadcastRoom(roomId);
+    this.runBotAutoplay(roomId);
   }
 
   private handleRoomCommand(client: ConnectedClient, command: RoomClientCommand, clientCommandId?: string): void {
@@ -183,6 +184,7 @@ export class GameWebSocketServer {
         this.send(client, { type: 'roomCreated', roomId: runtime.room.roomId });
         this.ack(client, clientCommandId, runtime.room.game?.version);
         this.broadcastRoom(runtime.room.roomId);
+        this.runBotAutoplay(runtime.room.roomId);
         this.persistNow();
         return;
       }
@@ -201,6 +203,22 @@ export class GameWebSocketServer {
         }
         client.session.roomId = command.roomId;
         this.send(client, { type: 'joinedRoom', roomId: command.roomId });
+        this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
+        this.broadcastRoom(command.roomId);
+        this.persistNow();
+        return;
+      }
+      case 'AddBot': {
+        const runtimeResult = this.rooms.getRuntime(command.roomId);
+        if (!runtimeResult.ok) {
+          this.reject(client, runtimeResult.error, clientCommandId);
+          return;
+        }
+        const result = runtimeResult.value.addBot(client.session.userId);
+        if (!result.ok) {
+          this.reject(client, result.error, clientCommandId, runtimeResult.value.room.game?.version);
+          return;
+        }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
         this.persistNow();
@@ -257,6 +275,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.runBotAutoplay(command.roomId);
         this.persistNow();
         return;
       }
@@ -273,6 +292,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.runBotAutoplay(command.roomId);
         this.persistNow();
         return;
       }
@@ -305,6 +325,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.runBotAutoplay(command.roomId);
         this.persistNow();
         return;
       }
@@ -321,10 +342,20 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.runBotAutoplay(command.roomId);
         this.persistNow();
         return;
       }
     }
+  }
+
+  private runBotAutoplay(roomId: RoomId): void {
+    const runtimeResult = this.rooms.getRuntime(roomId);
+    if (!runtimeResult.ok) return;
+    const changed = runtimeResult.value.autoPlayBots();
+    if (!changed) return;
+    this.broadcastRoom(roomId);
+    this.persistNow();
   }
 
   private broadcastRoom(roomId: RoomId): void {

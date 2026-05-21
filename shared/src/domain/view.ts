@@ -28,6 +28,7 @@ export interface RoomSeatView {
   displayName: string;
   ready: boolean;
   connected: boolean;
+  isBot?: boolean;
   isOwner: boolean;
   /** @deprecated 旧版大厅预选展示字段，新流程不再公开使用。 */
   characterPreferenceId?: CharacterId;
