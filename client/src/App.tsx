@@ -70,6 +70,8 @@ export default function App() {
   const wasReconnecting = useRef(false);
   const previousOwnerUserId = useRef<string | undefined>();
   const activeRoomIdRef = useRef<string | undefined>(persistedSession.roomId);
+  const currentRoomRef = useRef<RoomView | undefined>();
+  const lastRejectedCodeRef = useRef<string | undefined>();
 
   const pushToast = (kind: ToastKind, message: string) => {
     const id = `toast_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -102,6 +104,7 @@ export default function App() {
         }
         previousOwnerUserId.current = message.room.ownerUserId;
         activeRoomIdRef.current = message.room.roomId;
+        currentRoomRef.current = message.room;
         setRoom(message.room);
         setSession(message.session);
       }
@@ -121,6 +124,7 @@ export default function App() {
         pushToast('success', `${label}成功`);
       }
       if (message.type === 'commandRejected') {
+        lastRejectedCodeRef.current = message.error.code;
         const rejectedCommandId = message.clientCommandId;
         const label = rejectedCommandId ? pendingLabelsRef.current[rejectedCommandId] : '操作';
         if (rejectedCommandId) {
@@ -131,23 +135,46 @@ export default function App() {
         if (message.error.code === 'reconnect.seatNotFound') {
           client.forgetRoom();
           activeRoomIdRef.current = undefined;
+          currentRoomRef.current = undefined;
           setRoom(undefined);
           setRoomIdInput('');
           previousOwnerUserId.current = undefined;
           pushToast('warning', '未找到你的座位，已清除本机保存的房间记录');
+          setMessages((items) => ['提示：原房间座位不存在，已清除本机保存的房间记录', ...items].slice(0, 20));
+          return;
         }
         pushToast('error', `${label}失败：${message.error.message}`);
         setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
       }
       if (message.type === 'error') {
-        if (message.error.code === 'reconnect.seatNotFound') {
+        const code = message.error.code;
+        const isDuplicateRejectError = lastRejectedCodeRef.current === code;
+        lastRejectedCodeRef.current = undefined;
+
+        if (code === 'reconnect.seatNotFound') {
+          if (!currentRoomRef.current) {
+            client.forgetRoom();
+            activeRoomIdRef.current = undefined;
+            currentRoomRef.current = undefined;
+            setRoom(undefined);
+            setRoomIdInput('');
+            previousOwnerUserId.current = undefined;
+            if (!isDuplicateRejectError) {
+              pushToast('warning', '原房间已不存在，已清除本机保存的房间记录');
+              setMessages((items) => ['提示：原房间已不存在，已清除本机保存的房间记录', ...items].slice(0, 20));
+            }
+          }
+          return;
+        }
+
+        if ((code === 'room.notFound' || code === 'sync.notInRoom') && !currentRoomRef.current) {
+          // 页面刚打开时，本机 localStorage 里可能残留旧 roomId。静默清理，避免一进页面就弹“房间不存在”。
           client.forgetRoom();
           activeRoomIdRef.current = undefined;
-          setRoom(undefined);
           setRoomIdInput('');
-          previousOwnerUserId.current = undefined;
-          pushToast('warning', '未找到你的座位，已清除本机保存的房间记录');
+          return;
         }
+
         pushToast('error', message.error.message);
         setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
       }
