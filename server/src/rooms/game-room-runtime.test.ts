@@ -202,6 +202,12 @@ describe('GameRoomRuntime', () => {
         }
       }
     });
+
+    it('contains the second base-character batch with unique ids', () => {
+      expect(MVP_CHARACTER_POOL.length).toBeGreaterThanOrEqual(21);
+      expect(new Set(MVP_CHARACTER_POOL.map((character) => character.characterId)).size).toBe(MVP_CHARACTER_POOL.length);
+      expect(MVP_CHARACTER_POOL.some((character) => character.characterId === 'char_025_mr_and_mrs_smith')).toBe(true);
+    });
   });
 
   describe('setup events', () => {
@@ -232,6 +238,18 @@ describe('GameRoomRuntime', () => {
       for (const seat of runtime.room.seats) {
         expect(new Set(seat.characterOptionIds).size).toBe(2);
       }
+    });
+
+    it('deals two private character options to 8 players after expanding the base pool', () => {
+      const runtime = new GameRoomRuntime('ROOM08' as never, userId(0), '玩家0');
+      for (let index = 1; index < 8; index += 1) {
+        expect(runtime.join({ userId: userId(index), displayName: `玩家${index}` }).ok).toBe(true);
+        expect(runtime.setReady(userId(index), true).ok).toBe(true);
+      }
+      expect(runtime.startGame(userId(0)).ok).toBe(true);
+      expect(runtime.room.seats.every((seat) => seat.characterOptionIds?.length === 2)).toBe(true);
+      const allOptions = runtime.room.seats.flatMap((seat) => seat.characterOptionIds ?? []);
+      expect(new Set(allOptions).size).toBe(16);
     });
 
     it('rejects selecting a character outside own private options', () => {
@@ -386,6 +404,7 @@ describe('GameRoomRuntime', () => {
       const runtime = createStartedRuntime();
       const [p0, , p2, p3] = playersBySeat(runtime);
       if (!p0 || !p2 || !p3) throw new Error('missing players');
+      setCharacter(runtime, p2.displayName, 'char_004_holmes');
 
       passFirstPending(runtime, 0, p0.playerId);
       passFirstPending(runtime, 0, p0.playerId);

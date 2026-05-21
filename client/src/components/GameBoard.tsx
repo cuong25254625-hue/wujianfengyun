@@ -269,16 +269,29 @@ export function GameBoard({ room, session, onPlayerCommand, onLeaveRoom, onRetur
           />
           <div className="actions">
             {me.characterId === 'char_002_liu_jian_ming' && <button onClick={() => useCharacterSkill('mie_ji', selectedSkillTarget)}>灭迹</button>}
+            {me.characterId === 'char_003_yagami_light' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('cai_jue', selectedSkillTarget)}>裁决</button>}
             {me.characterId === 'char_004_holmes' && currentTransfer && currentTransfer.fromPlayerId !== me.playerId && <button onClick={() => useCharacterSkill('jie_lu')}>揭露</button>}
+            {me.characterId === 'char_005_zhuge_liang' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('ba_zhen', selectedSkillTarget)}>八阵</button>}
             {me.characterId === 'char_006_naruhodo' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('yi_yi', selectedSkillTarget)}>异议</button>}
             {me.characterId === 'char_006_naruhodo' && ['SkillWindow', 'TransferDeclare'].includes(game.phase.phase) && <button onClick={() => useCharacterSkill('ni_zhuan', selectedSkillTarget)}>逆转</button>}
+            {me.characterId === 'char_007_mitsurugi_reiji' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('sou_cha', selectedSkillTarget)}>搜查</button>}
             {me.characterId === 'char_008_jack_the_ripper' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('guan_fan', selectedSkillTarget)}>惯犯</button>}
             {me.characterId === 'char_009_akise_aru' && ['SkillWindow', 'DyingWindow'].includes(game.phase.phase) && <button onClick={() => useCharacterSkill('du_bo', selectedSkillTarget)}>赌博</button>}
+            {me.characterId === 'char_010_john_kramer' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('shu_ju', selectedSkillTarget)}>竖锯</button>}
+            {me.characterId === 'char_011_akiyama_shinichi' && ['SkillWindow', 'ReactionWindow'].includes(game.phase.phase) && <button onClick={() => useCharacterSkill('qi_zha', selectedSkillTarget)}>欺诈</button>}
             {me.characterId === 'char_014_ayazato_chihiro' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('bian_hu', selectedSkillTarget)}>辩护</button>}
             {me.characterId === 'char_014_ayazato_chihiro' && game.phase.phase === 'SkillWindow' && deadTargets.length > 0 && <button onClick={() => useCharacterSkill('ling_mei', deadTargets[0]?.playerId, selectedSkillTarget)}>灵媒借传</button>}
+            {me.characterId === 'char_015_amane_misa' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('kai_yan', selectedSkillTarget)}>开眼</button>}
             {me.characterId === 'char_016_cc' && game.phase.phase === 'TransferDeclare' && <button onClick={() => useCharacterSkill('qi_yue', selectedSkillTarget, selectedSkillSecondTarget)}>契约双传</button>}
             {me.characterId === 'char_016_cc' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('shou_hu')}>守护</button>}
             {me.characterId === 'char_020_gasai_yuno' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('beng_huai', selectedSkillTarget)}>崩坏</button>}
+            {me.characterId === 'char_021_kanzaki_nao' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('jiu_shu', selectedSkillTarget)}>救赎</button>}
+            {me.characterId === 'char_022_vermouth' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('bao_mi', selectedSkillTarget)}>保密</button>}
+            {me.characterId === 'char_023_kawashima_yoshiko' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('jiao_ji', selectedSkillTarget)}>交际</button>}
+            {me.characterId === 'char_023_kawashima_yoshiko' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('jue_qing', selectedSkillTarget)}>绝情</button>}
+            {me.characterId === 'char_024_wei_zhongxian' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('chang_wei', selectedSkillTarget)}>厂卫</button>}
+            {me.characterId === 'char_025_mr_and_mrs_smith' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('die_zhan', selectedSkillTarget)}>谍战</button>}
+            {me.characterId === 'char_025_mr_and_mrs_smith' && game.phase.phase === 'SkillWindow' && <button onClick={() => useCharacterSkill('fu_fu', selectedSkillTarget)}>夫妇</button>}
           </div>
         </details>}
       </div>

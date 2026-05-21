@@ -54,6 +54,22 @@ export interface SkillRuntimeAccess {
 
 type HandlerFactory = (runtime: SkillRuntimeAccess) => SkillHandler;
 
+const rememberSkillIdentity = (player: Player, target: Player, source = 'skill'): void => {
+  if (player.knownIdentities.some((known) => known.targetPlayerId === target.playerId && known.faction === target.faction)) return;
+  player.knownIdentities.push({ targetPlayerId: target.playerId, faction: target.faction, source: source as 'skill' });
+};
+
+const incrementCounter = (player: Player, key: string, amount = 1): void => {
+  player.missionCounters[key] = ((player.missionCounters[key] as number) ?? 0) + amount;
+};
+
+const requireAliveOtherTarget = (game: GameState, player: Player, targetPlayerId: PlayerId | undefined, code: string, message: string): DomainResult<Player> => {
+  if (!targetPlayerId || targetPlayerId === player.playerId) return err(`${code}.targetRequired`, message);
+  const target = game.players[targetPlayerId];
+  if (!target || target.aliveState !== 'alive') return err(`${code}.targetNotFound`, '目标不存在或未存活');
+  return ok(target);
+};
+
 const handlerFactories = new Map<string, HandlerFactory>();
 
 export function registerSkillHandler(skillId: string, factory: HandlerFactory): void {
@@ -370,6 +386,282 @@ registerSkillHandler('jiu_ji', (rt) => ({
       return ok(runtime.advanceTurn(game));
     }
     return ok(game);
+  },
+}));
+
+// cai_jue（夜神月 - 裁决）
+registerSkillHandler('cai_jue', (rt) => ({
+  skillId: 'cai_jue',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('caiJue.invalidPhase', '裁决只能在技能阶段使用');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'caiJue', '裁决需要选择另一名玩家');
+    if (!targetResult.ok) return targetResult;
+    const key = `cai_jue_target_${input.targetPlayerId}`;
+    if (player.flags[key]) return err('caiJue.targetUsed', '裁决对每名玩家限一次');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    player.flags[`cai_jue_target_${input.targetPlayerId}`] = true;
+    incrementCounter(player, 'cai_jue_used');
+    runtime.revealCharacter(game, player);
+    runtime.addInfo(game, target.playerId, 'false', player.playerId, 'cai_jue');
+    runtime.addLog(game, 'character.caiJue', { player: player.displayName, target: target.displayName });
+    return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// ba_zhen（诸葛亮 - 八阵）
+registerSkillHandler('ba_zhen', (rt) => ({
+  skillId: 'ba_zhen',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('baZhen.invalidPhase', '八阵只能在技能阶段使用');
+    if (!input.targetPlayerId) return err('baZhen.targetRequired', '八阵需要选择一名玩家');
+    const target = game.players[input.targetPlayerId];
+    if (!target || target.aliveState === 'dead') return err('baZhen.targetNotFound', '目标不存在或已死亡');
+    if (runtime.infoCount(game, target.playerId, 'false') < 1) return err('baZhen.noFalse', '目标没有假情报可烧毁');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    const burned = runtime.burnInfos(game, target.playerId, 1, player.playerId, 'ba_zhen', 'false');
+    incrementCounter(player, 'ba_zhen_used');
+    incrementCounter(player, 'false_info_cleansed', burned);
+    runtime.addLog(game, 'character.baZhen', { player: player.displayName, target: target.displayName, count: burned });
+    return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// sou_cha（御剑怜侍 - 搜查）
+registerSkillHandler('sou_cha', (rt) => ({
+  skillId: 'sou_cha',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('souCha.invalidPhase', '搜查只能在技能阶段使用');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'souCha', '搜查需要选择另一名玩家');
+    if (!targetResult.ok) return targetResult;
+    const key = `sou_cha_target_${input.targetPlayerId}`;
+    if (player.flags[key]) return err('souCha.targetUsed', '搜查对每名玩家限一次');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    player.flags[`sou_cha_target_${input.targetPlayerId}`] = true;
+    rememberSkillIdentity(player, target);
+    incrementCounter(player, 'sou_cha_used');
+    runtime.addPrivateLog(game, player.playerId, 'character.souCha', { player: player.displayName, target: target.displayName, faction: target.faction });
+    runtime.addLog(game, 'character.souChaPublic', { player: player.displayName, target: target.displayName });
+    return ok(game);
+  },
+}));
+
+// shu_ju（约翰克莱默 - 竖锯）
+registerSkillHandler('shu_ju', (rt) => ({
+  skillId: 'shu_ju',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('shuJu.invalidPhase', '竖锯只能在技能阶段使用');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'shuJu', '竖锯需要选择另一名玩家');
+    if (!targetResult.ok) return targetResult;
+    if (player.flags.shu_ju_used) return err('shuJu.used', 'MVP 中竖锯每局限一次');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    player.flags.shu_ju_used = true;
+    runtime.revealCharacter(game, player);
+    runtime.addInfo(game, target.playerId, 'false', player.playerId, 'shu_ju');
+    runtime.addInfo(game, player.playerId, 'true', player.playerId, 'shu_ju');
+    incrementCounter(player, 'shu_ju_false_added');
+    runtime.addLog(game, 'character.shuJu', { player: player.displayName, target: target.displayName });
+    return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// qi_zha（秋山深一 - 欺诈）
+registerSkillHandler('qi_zha', (rt) => ({
+  skillId: 'qi_zha',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase === 'ReactionWindow') {
+      if (!game.currentTransfer || game.currentTransfer.fromPlayerId === player.playerId) return err('qiZha.noTransfer', '欺诈只能看破他人的传递');
+      return ok(undefined);
+    }
+    if (game.phase.phase !== 'SkillWindow') return err('qiZha.invalidPhase', '欺诈只能在响应窗口或技能阶段使用');
+    return requireAliveOtherTarget(game, player, input.targetPlayerId, 'qiZha', '欺诈需要选择另一名玩家').ok ? ok(undefined) : requireAliveOtherTarget(game, player, input.targetPlayerId, 'qiZha', '欺诈需要选择另一名玩家') as DomainResult<void>;
+  },
+  resolve(runtime, game, player, input) {
+    if (game.phase.phase === 'ReactionWindow' && game.currentTransfer) {
+      incrementCounter(player, 'qi_zha_seen');
+      if (game.currentTransfer.declaredTruth === 'false') incrementCounter(player, 'qi_zha_false_seen');
+      runtime.recordPendingAct(game, player.playerId);
+      runtime.addPrivateLog(game, player.playerId, 'character.qiZhaPeek', { player: player.displayName, truth: game.currentTransfer.declaredTruth });
+      return ok(runtime.maybeResolveReaction(game));
+    }
+    const target = game.players[input.targetPlayerId!]!;
+    target.flags.character_skill_disabled_until_turn_serial = game.turn.turnSerial + 1;
+    incrementCounter(player, 'qi_zha_used');
+    runtime.addLog(game, 'character.qiZhaDisable', { player: player.displayName, target: target.displayName });
+    return ok(game);
+  },
+}));
+
+// kai_yan（弥海砂 - 开眼）
+registerSkillHandler('kai_yan', (rt) => ({
+  skillId: 'kai_yan',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('kaiYan.invalidPhase', '开眼只能在技能阶段使用');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'kaiYan', '开眼需要选择另一名玩家');
+    if (!targetResult.ok) return targetResult;
+    const key = `kai_yan_target_${input.targetPlayerId}`;
+    if (player.flags[key]) return err('kaiYan.targetUsed', '开眼对每名玩家限一次');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    player.flags[`kai_yan_target_${input.targetPlayerId}`] = true;
+    rememberSkillIdentity(player, target);
+    runtime.addInfo(game, player.playerId, 'false', player.playerId, 'kai_yan');
+    incrementCounter(player, 'kai_yan_used');
+    runtime.addPrivateLog(game, player.playerId, 'character.kaiYan', { player: player.displayName, target: target.displayName, faction: target.faction, character: target.characterName ?? '未知角色' });
+    runtime.addLog(game, 'character.kaiYanPublic', { player: player.displayName, target: target.displayName });
+    return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// jiu_shu（神崎直 - 救赎）
+registerSkillHandler('jiu_shu', (rt) => ({
+  skillId: 'jiu_shu',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('jiuShu.invalidPhase', '救赎只能在技能阶段使用');
+    if (!input.targetPlayerId) return err('jiuShu.targetRequired', '救赎需要选择一名玩家');
+    const target = game.players[input.targetPlayerId];
+    if (!target || target.aliveState === 'dead') return err('jiuShu.targetNotFound', '目标不存在或已死亡');
+    if (runtime.infoCount(game, target.playerId, 'false') < 1) return err('jiuShu.noFalse', '目标没有假情报可烧毁');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    const burned = runtime.burnInfos(game, target.playerId, 1, player.playerId, 'jiu_shu', 'false');
+    incrementCounter(player, 'jiu_shu_burned', burned);
+    incrementCounter(player, 'false_info_cleansed', burned);
+    runtime.addLog(game, 'character.jiuShu', { player: player.displayName, target: target.displayName, count: burned });
+    return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// bao_mi（贝尔摩德 - 保密）
+registerSkillHandler('bao_mi', (rt) => ({
+  skillId: 'bao_mi',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('baoMi.invalidPhase', '保密只能在技能阶段使用');
+    return requireAliveOtherTarget(game, player, input.targetPlayerId, 'baoMi', '保密需要选择另一名玩家').ok ? ok(undefined) : requireAliveOtherTarget(game, player, input.targetPlayerId, 'baoMi', '保密需要选择另一名玩家') as DomainResult<void>;
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    rememberSkillIdentity(player, target);
+    player.characterRevealed = false;
+    incrementCounter(player, 'bao_mi_used');
+    runtime.addPrivateLog(game, player.playerId, 'character.baoMi', { player: player.displayName, target: target.displayName, faction: target.faction });
+    runtime.addLog(game, 'character.baoMiPublic', { player: player.displayName, target: target.displayName });
+    return ok(game);
+  },
+}));
+
+// jiao_ji（川岛芳子 - 交际）
+registerSkillHandler('jiao_ji', (rt) => ({
+  skillId: 'jiao_ji',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('jiaoJi.invalidPhase', '交际只能在技能阶段使用');
+    return requireAliveOtherTarget(game, player, input.targetPlayerId, 'jiaoJi', '交际需要选择另一名玩家').ok ? ok(undefined) : requireAliveOtherTarget(game, player, input.targetPlayerId, 'jiaoJi', '交际需要选择另一名玩家') as DomainResult<void>;
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    rememberSkillIdentity(player, target);
+    incrementCounter(player, 'jiao_ji_used');
+    runtime.addPrivateLog(game, player.playerId, 'character.jiaoJi', { player: player.displayName, target: target.displayName, faction: target.faction });
+    runtime.addLog(game, 'character.jiaoJiPublic', { player: player.displayName, target: target.displayName });
+    return ok(game);
+  },
+}));
+
+// jue_qing（川岛芳子 - 绝情）
+registerSkillHandler('jue_qing', (rt) => ({
+  skillId: 'jue_qing',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('jueQing.invalidPhase', '绝情只能在技能阶段使用');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'jueQing', '绝情需要选择男性玩家');
+    if (!targetResult.ok) return targetResult;
+    if (targetResult.value.gender !== 'male') return err('jueQing.notMale', '绝情目标必须是男性角色');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    runtime.revealCharacter(game, player);
+    runtime.addInfo(game, target.playerId, 'false', player.playerId, 'jue_qing');
+    incrementCounter(player, 'jue_qing_used');
+    runtime.addLog(game, 'character.jueQing', { player: player.displayName, target: target.displayName });
+    return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// chang_wei（魏忠贤 - 厂卫）
+registerSkillHandler('chang_wei', (rt) => ({
+  skillId: 'chang_wei',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('changWei.invalidPhase', '厂卫只能在技能阶段使用');
+    if (!input.targetPlayerId) return err('changWei.targetRequired', '厂卫需要选择一名玩家');
+    const target = game.players[input.targetPlayerId];
+    if (!target || target.aliveState === 'dead') return err('changWei.targetNotFound', '目标不存在或已死亡');
+    if (runtime.infoCount(game, target.playerId, 'false') < 1) return err('changWei.noFalse', '目标没有假情报可烧毁');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    const burned = runtime.burnInfos(game, target.playerId, 1, player.playerId, 'chang_wei', 'false');
+    incrementCounter(player, 'chang_wei_burned', burned);
+    runtime.addLog(game, 'character.changWei', { player: player.displayName, target: target.displayName, count: burned });
+    return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// die_zhan（史密斯夫妇 - 谍战）
+registerSkillHandler('die_zhan', (rt) => ({
+  skillId: 'die_zhan',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('dieZhan.invalidPhase', '谍战只能在技能阶段使用');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'dieZhan', '谍战需要选择另一名玩家');
+    if (!targetResult.ok) return targetResult;
+    if (player.infoIds.length < 1 || targetResult.value.infoIds.length < 1) return err('dieZhan.noInfo', '双方都至少需要一张情报');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    runtime.revealCharacter(game, player);
+    const mine = player.infoIds[0]!;
+    const theirs = target.infoIds[0]!;
+    runtime.moveInfo(game, mine, target.playerId, 'die_zhan');
+    runtime.moveInfo(game, theirs, player.playerId, 'die_zhan');
+    incrementCounter(player, 'die_zhan_moved', 2);
+    runtime.addLog(game, 'character.dieZhan', { player: player.displayName, target: target.displayName });
+    return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// fu_fu（史密斯夫妇 - 夫妇）
+registerSkillHandler('fu_fu', (rt) => ({
+  skillId: 'fu_fu',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('fuFu.invalidPhase', '夫妇只能在技能阶段使用');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'fuFu', '夫妇需要选择另一名玩家');
+    if (!targetResult.ok) return targetResult;
+    if (targetResult.value.infoIds.length < 1) return err('fuFu.noInfo', '目标没有情报可烧毁');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    runtime.revealCharacter(game, player);
+    const burned = runtime.burnInfos(game, target.playerId, 2, player.playerId, 'fu_fu');
+    incrementCounter(player, 'fu_fu_burned', burned);
+    runtime.addLog(game, 'character.fuFu', { player: player.displayName, target: target.displayName, count: burned });
+    return ok(runtime.afterInfoChanged(game));
   },
 }));
 

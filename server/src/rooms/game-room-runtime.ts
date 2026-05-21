@@ -25,7 +25,7 @@ import {
   isSupportedPlayerCount,
   ok,
 } from '@wujian/shared';
-import { characterDefinitionById, dealCharacterOptions } from '../engine/character-registry.js';
+import { characterDefinitionById, dealCharacterOptions, optionsPerPlayerFor } from '../engine/character-registry.js';
 import { assignIdentities } from '../engine/identity-engine.js';
 import { createEventId, createInfoId, createPendingActionId, createPlayerId } from '../util/id.js';
 import { checkMission, markDeathDelayMissions, checkDeathDelayVictories } from '../engine/mission-engine.js';
@@ -426,7 +426,7 @@ export class GameRoomRuntime {
     if (player.regularSkills.probeRemaining <= 0) return err('probe.noCount', '试探次数不足');
 
     player.regularSkills.probeRemaining -= 1;
-    const effectiveFaction = this.hasSkill(target, 'cheng_fu') ? player.faction : target.faction;
+    const effectiveFaction = (this.hasSkill(target, 'cheng_fu') || this.hasSkill(target, 'yi_rong')) ? player.faction : target.faction;
     const success = effectiveFaction === declaredFaction;
     if (this.hasSkill(target, 'jiu_ji') || target.characterId === 'char_002_liu_jian_ming') {
       this.rememberIdentity(target, playerId, player.faction, 'skill');
@@ -1071,7 +1071,7 @@ export class GameRoomRuntime {
     const config = createDefaultGameConfig(playerCount);
     const factions = assignIdentities(playerCount);
     const sortedSeats = [...this.room.seats].sort((left, right) => left.seatIndex - right.seatIndex);
-    const optionsPerPlayer = Math.min(2, Math.floor(10 / playerCount));
+    const optionsPerPlayer = optionsPerPlayerFor(playerCount);
     const characterOptions = dealCharacterOptions(playerCount, optionsPerPlayer);
     const players = {} as GameState['players'];
     const now = Date.now();
@@ -1327,14 +1327,25 @@ export class GameRoomRuntime {
     const map: Record<string, string[]> = {
       char_001_chen_yong_ren: ['cheng_fu', 'jiu_ji'],
       char_002_liu_jian_ming: ['cheng_fu', 'mie_ji'],
+      char_003_yagami_light: ['chou_mou', 'cai_jue'],
       char_004_holmes: ['zhen_xiang', 'jie_lu'],
+      char_005_zhuge_liang: ['qi_xing', 'ba_zhen'],
       char_006_naruhodo: ['yi_yi', 'ni_zhuan'],
+      char_007_mitsurugi_reiji: ['jian_shi', 'sou_cha'],
       char_008_jack_the_ripper: ['zhao_zhang', 'guan_fan'],
       char_009_akise_aru: ['tan_jiu', 'du_bo'],
+      char_010_john_kramer: ['shu_ju', 'pin_tu'],
+      char_011_akiyama_shinichi: ['qi_zha'],
       char_014_ayazato_chihiro: ['bian_hu', 'ling_mei'],
+      char_015_amane_misa: ['kai_yan', 'ai_qing'],
       char_016_cc: ['qi_yue', 'shou_hu'],
       char_017_ayanami_rei: ['bing_shan', 'ke_long'],
       char_020_gasai_yuno: ['beng_huai', 'xin_sheng'],
+      char_021_kanzaki_nao: ['cheng_dan', 'jiu_shu'],
+      char_022_vermouth: ['yi_rong', 'bao_mi'],
+      char_023_kawashima_yoshiko: ['jiao_ji', 'jue_qing'],
+      char_024_wei_zhongxian: ['huan_dang', 'chang_wei'],
+      char_025_mr_and_mrs_smith: ['die_zhan', 'fu_fu'],
     };
     return map[player.characterId ?? ''] ?? [];
   }

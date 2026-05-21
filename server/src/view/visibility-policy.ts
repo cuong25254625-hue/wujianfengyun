@@ -24,6 +24,11 @@ const privateLogKeys = new Set([
   'probe.failed',
   'transfer.declaredTruth',
   'transfer.rejectedTruth',
+  'character.souCha',
+  'character.qiZhaPeek',
+  'character.kaiYan',
+  'character.baoMi',
+  'character.jiaoJi',
 ]);
 
 const hiddenCharacterParamKeys = new Set(['characterId', 'characterName', 'targetCharacterId', 'targetCharacterName']);
