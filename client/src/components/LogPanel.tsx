@@ -147,43 +147,59 @@ const hasPrivateInfo = (player: unknown): player is PrivatePlayerView =>
   typeof player === 'object' && player !== null && 'privateLog' in player;
 
 export function LogPanel({ room, session, messages }: LogPanelProps) {
+  const isInGame = Boolean(room?.game);
   const publicLogs = room?.game?.publicLog.slice(0, 30) ?? [];
+  const mobilePublicLogs = room?.game?.publicLog.filter((entry) => importantKeys.has(entry.messageKey)).slice(0, 8) ?? [];
   const me = room?.game?.players.find((player) => player.userId === session?.userId);
   const privateLog = (me && hasPrivateInfo(me) ? me.privateLog : []) as PrivateLogEntry[];
   const clientMessages = messages.slice(0, 12).map(formatClientMessage);
 
   return (
     <section className="card log-card">
-      <h2>记录</h2>
-      <div className="log-list">
-        {clientMessages.length > 0 && (
-          <section className="log-section">
-            <h3>连接提示</h3>
-            {clientMessages.map((message, index) => (
-              <div className="log-entry client-log" key={`${message}-${index}`}>{message}</div>
-            ))}
-          </section>
-        )}
-        {privateLog.length > 0 && (
-          <section className="log-section">
-            <h3>私人记录</h3>
-            {privateLog.map((entry) => (
-              <div className="log-entry private-log" key={entry.id}>
+      <details className="mobile-log-details" open={!isInGame}>
+        <summary>
+          <span>记录</span>
+          {isInGame && <small>点击展开 / 收起</small>}
+        </summary>
+        <div className="log-list">
+          {clientMessages.length > 0 && (
+            <section className="log-section">
+              <h3>连接提示</h3>
+              {clientMessages.map((message, index) => (
+                <div className="log-entry client-log" key={`${message}-${index}`}>{message}</div>
+              ))}
+            </section>
+          )}
+          {privateLog.length > 0 && (
+            <section className="log-section">
+              <h3>私人记录</h3>
+              {privateLog.map((entry) => (
+                <div className="log-entry private-log" key={entry.id}>
+                  {formatPublicLog(entry)}
+                </div>
+              ))}
+            </section>
+          )}
+          <section className="log-section mobile-important-log">
+            <h3>重点记录</h3>
+            {mobilePublicLogs.length === 0 && <p className="muted">暂无重点记录。</p>}
+            {mobilePublicLogs.map((entry) => (
+              <div className="log-entry important" key={`mobile-${entry.id}`}>
                 {formatPublicLog(entry)}
               </div>
             ))}
           </section>
-        )}
-        <section className="log-section">
-          <h3>对局记录</h3>
-          {publicLogs.length === 0 && <p className="muted">开局后会在这里显示关键记录。</p>}
-          {publicLogs.map((entry) => (
-            <div className={`log-entry ${importantKeys.has(entry.messageKey) ? 'important' : ''}`} key={entry.id}>
-              {formatPublicLog(entry)}
-            </div>
-          ))}
-        </section>
-      </div>
+          <section className="log-section full-log-section">
+            <h3>对局记录</h3>
+            {publicLogs.length === 0 && <p className="muted">开局后会在这里显示关键记录。</p>}
+            {publicLogs.map((entry) => (
+              <div className={`log-entry ${importantKeys.has(entry.messageKey) ? 'important' : ''}`} key={entry.id}>
+                {formatPublicLog(entry)}
+              </div>
+            ))}
+          </section>
+        </div>
+      </details>
     </section>
   );
 }

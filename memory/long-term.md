@@ -30,6 +30,7 @@
 - 一键部署脚本：deploy/install.sh、deploy/update.sh、deploy/status.sh
 - **手机端深度适配**（2026-05-21）：4 级自适应断点（1180/900/640/480px）；牌桌中心从 sticky 改为文档流相对定位避免遮挡座位；座位环在手机端降级为网格布局（640px 双列、480px 单列）；操作按钮全宽；safe-area-inset 适配刘海屏；`touch-action: manipulation` 禁双击缩放；`-webkit-tap-highlight-color: transparent` 去 iOS 点击高亮；viewport-fit=cover + apple-mobile-web-app-capable；按钮最小触摸区域 42-44px；CSS 增量约 200 行。
 - **手机端操作可见性修复**（2026-05-21）：手机对局操作看不到的根因是 `.table-arena` 的 `overflow: hidden` 裁剪了游戏控件，且 `.table-center` 内的控件在透明背景下不可见。修复为：所有移动端断点显式设置 `overflow: visible`；控件卡片加可见边框；≤640px/480px 添加浮动底部操作栏（`position: fixed; bottom: 0`），当前待处理操作始终显示在屏幕底部，含 safe-area-inset 适配。
+- **手机端 UI/排版专项优化**（2026-05-21）：进一步按手机优先优化信息层级。对局中央状态头在移动端 sticky、系统提示更紧凑；当前操作底部浮层增加拖拽把手视觉、横屏小高度专项断点；玩家座位卡压缩并隐藏低优先级信息，≤390px 小屏进一步收缩头像和文本；日志面板改为 details 折叠结构，手机端默认展示重点记录，完整记录隐藏以降低信息噪音；横屏 ≤520px 高度使用 4 列紧凑座位网格。
 
 ## 2026-05-21 自动提取
 - 用户优先要求优化手机端适配问题
