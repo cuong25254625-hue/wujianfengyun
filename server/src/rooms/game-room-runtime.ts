@@ -468,8 +468,9 @@ export class GameRoomRuntime {
       .filter((item) => item.aliveState === 'alive' && item.playerId !== playerId && item.playerId !== targetPlayerId)
       .map((item) => item.playerId);
     eligible.push(playerId);
+    this.enterPhase(game, 'ReactionWindow', { type: 'transfer', transferId });
     this.openPendingAction(game, 'regularSkillWindow', eligible, { type: 'transfer', transferId });
-    return ok(this.enterPhase(game, 'ReactionWindow', { type: 'transfer', transferId }));
+    return ok(this.maybeResolveReaction(game));
   }
 
   private handleLock(game: GameState, playerId: PlayerId, transferId: string, targetPlayerId: PlayerId): DomainResult<GameState> {
@@ -618,6 +619,7 @@ export class GameRoomRuntime {
   private maybeResolveReaction(game: GameState): GameState {
     const action = this.openActionByKind(game, 'regularSkillWindow');
     if (!action) return game;
+    this.autoPassBotResponses(game, action);
     if (this.allRequiredResponded(action)) {
       action.status = 'resolved';
       return this.resolveReactionWindow(game);
@@ -1204,6 +1206,7 @@ export class GameRoomRuntime {
       context,
     };
     game.pendingActions[id] = action;
+    this.autoPassBotResponses(game, action);
     return action;
   }
 
@@ -1438,6 +1441,21 @@ export class GameRoomRuntime {
     return required.every((playerId) => action.responses.some((response) => response.playerId === playerId));
   }
 
+  private isBotPlayer(playerId: PlayerId): boolean {
+    const player = this.room.game?.players[playerId];
+    if (!player) return false;
+    return Boolean(this.room.seats.find((seat) => seat.userId === player.userId)?.isBot);
+  }
+
+  private autoPassBotResponses(game: GameState, action: PendingAction): void {
+    for (const playerId of action.eligiblePlayerIds) {
+      if (!this.isBotPlayer(playerId)) continue;
+      if (action.responses.some((response) => response.playerId === playerId)) continue;
+      action.responses.push({ playerId, responseType: 'pass', submittedAt: Date.now() });
+      this.addLog(game, 'bot.autoPass', { player: this.playerName(game, playerId) });
+    }
+  }
+
   /**
    * 让机器人执行当前阶段的默认操作。
    * 机器人策略先保持极简：自动选第一个角色、跳过宣胜/技能响应、默认传真情报、默认接收。
@@ -1534,6 +1552,28 @@ export class GameRoomRuntime {
 
     if (changed) this.touch();
     return changed;
+  }
+
+  forceEndGame(userId: UserId): DomainResult<GameState> {
+    const game = this.room.game;
+    if (!game || this.room.status !== 'playing') return err('gm.gameNotRunning', '游戏尚未进行中');
+    if (game.status === 'finished') return err('gm.gameFinished', '游戏已经结束');
+
+    const declaredBy = Object.values(game.players).find((player) => player.userId === userId)?.playerId
+      ?? Object.values(game.players)[0]?.playerId;
+    if (!declaredBy) return err('gm.noPlayers', '房间内没有玩家');
+
+    this.closeAllOpenActions(game);
+    game.status = 'finished';
+    this.room.status = 'finished';
+    game.winState.finished = true;
+    game.winState.winner = { faction: 'none', declaredByPlayerId: declaredBy, reason: 'gmForceEnd' };
+    this.appendEvent(game, { type: 'GmGameForcedEnd', triggeredBy: userId });
+    this.appendEvent(game, { type: 'GameFinished', faction: 'none' });
+    this.addLog(game, 'gm.forceEnd', { user: userId });
+    this.enterPhase(game, 'GameOver', { type: 'none' });
+    this.touch();
+    return ok(game);
   }
 
   /**

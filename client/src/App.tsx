@@ -33,6 +33,7 @@ const commandLabel = (message: ClientMessage): string => {
       SetReady: '准备状态',
       StartGame: '开始游戏',
       GmForceAdvance: '强制推进',
+      GmForceEnd: '强制结束',
     };
     return labels[message.command.type] ?? '房间操作';
   }
@@ -293,6 +294,17 @@ export default function App() {
     sendWithFeedback({ type: 'roomCommand', command: { type: 'StartGame', roomId: room.roomId } });
   };
 
+  const gmForceAdvance = () => {
+    if (!room) return;
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'GmForceAdvance', roomId: room.roomId } });
+  };
+
+  const gmForceEnd = () => {
+    if (!room) return;
+    if (!window.confirm('确定要强制结束当前对局吗？此操作会直接结束游戏。')) return;
+    sendWithFeedback({ type: 'roomCommand', command: { type: 'GmForceEnd', roomId: room.roomId } });
+  };
+
   const sendPlayerCommand = (command: PlayerCommand) => {
     if (!room) return;
     sendWithFeedback({ type: 'playerCommand', roomId: room.roomId, command });
@@ -353,6 +365,12 @@ export default function App() {
           </aside>
         )}
         <section className="table-panel">
+          {inGame && room && session?.userId === room.ownerUserId && (
+            <div className="gm-toolbar">
+              <button onClick={gmForceAdvance}>强制推进阶段</button>
+              <button className="danger" onClick={gmForceEnd}>强制结束游戏</button>
+            </div>
+          )}
           <PlayerList room={room} session={session}>
             {inGame && <GameBoard room={room} session={session} onPlayerCommand={sendPlayerCommand} mode="table" />}
           </PlayerList>

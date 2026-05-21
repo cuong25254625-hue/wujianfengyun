@@ -1436,6 +1436,31 @@ describe('GameRoomRuntime', () => {
     });
   });
 
+  describe('bot autoplay', () => {
+    it('auto-passes bot responses immediately when a reaction window opens', () => {
+      const runtime = createStartedRuntime();
+      runtime.room.seats[2]!.isBot = true;
+      const players = playersBySeat(runtime);
+      const [sender, receiver, bot] = players;
+      if (!sender || !receiver || !bot) throw new Error('missing players');
+
+      passFirstPending(runtime, 0, sender.playerId);
+      passFirstPending(runtime, 0, sender.playerId);
+      const result = runtime.handlePlayerCommand(sender.userId, {
+        type: 'DeclareTransfer',
+        playerId: sender.playerId,
+        targetPlayerId: receiver.playerId,
+        truth: 'true',
+      });
+      expect(result.ok, errMsg(result)).toBe(true);
+      const action = Object.values(runtime.room.game?.pendingActions ?? {}).find(
+        (item) => item.status === 'open' && item.phase === 'ReactionWindow' && item.kind === 'regularSkillWindow',
+      );
+      expect(action).toBeDefined();
+      expect(action?.responses.some((response) => response.playerId === bot.playerId && response.responseType === 'pass')).toBe(true);
+    });
+  });
+
   describe('GM force advance', () => {
     it('force-advances from VictoryDeclareWindow to SkillWindow', () => {
       const runtime = createStartedRuntime();
@@ -1464,6 +1489,16 @@ describe('GameRoomRuntime', () => {
       expect(result.ok).toBe(true);
       // Should advance to next player's VictoryDeclareWindow
       expect(runtime.room.game?.phase.phase).toBe('VictoryDeclareWindow');
+    });
+
+    it('force-ends an in-progress game', () => {
+      const runtime = createStartedRuntime();
+      const result = runtime.forceEndGame(userId(0));
+      expect(result.ok).toBe(true);
+      expect(runtime.room.status).toBe('finished');
+      expect(runtime.room.game?.status).toBe('finished');
+      expect(runtime.room.game?.phase.phase).toBe('GameOver');
+      expect(runtime.room.game?.winState.winner?.reason).toBe('gmForceEnd');
     });
   });
 

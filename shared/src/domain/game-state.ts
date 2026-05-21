@@ -169,9 +169,9 @@ export interface PrivateLogEntry {
 export interface WinState {
   finished: boolean;
   winner?: {
-    faction: Faction;
+    faction: Faction | 'none';
     declaredByPlayerId: PlayerId;
-    reason: 'threeTrueInfo' | 'clearField' | 'secretMission';
+    reason: 'threeTrueInfo' | 'clearField' | 'secretMission' | 'gmForceEnd';
     missionPlayerId?: PlayerId;
   };
 }

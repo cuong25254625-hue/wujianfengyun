@@ -346,6 +346,22 @@ export class GameWebSocketServer {
         this.persistNow();
         return;
       }
+      case 'GmForceEnd': {
+        const runtimeResult = this.rooms.getRuntime(command.roomId);
+        if (!runtimeResult.ok) {
+          this.reject(client, runtimeResult.error, clientCommandId);
+          return;
+        }
+        const result = runtimeResult.value.forceEndGame(client.session.userId);
+        if (!result.ok) {
+          this.reject(client, result.error, clientCommandId, runtimeResult.value.room.game?.version);
+          return;
+        }
+        this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
+        this.broadcastRoom(command.roomId);
+        this.persistNow();
+        return;
+      }
     }
   }
 

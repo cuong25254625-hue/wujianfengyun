@@ -19,6 +19,7 @@ const victoryReasonLabel: Record<string, string> = {
   threeTrueInfo: '三张真情报',
   clearField: '清场',
   secretMission: '完成机密任务',
+  gmForceEnd: 'GM 强制结束',
 };
 
 const hasPrivateInfo = (player: unknown): player is PrivatePlayerView =>
@@ -98,7 +99,7 @@ export function GameBoard({ room, session, onPlayerCommand, mode = 'panel' }: Ga
 
       {game.winner && (
         <p className="ok win-banner">
-          游戏结束：{factionLabel[game.winner.faction]}胜利（{victoryReasonLabel[game.winner.reason] ?? '达成胜利条件'}）
+          游戏结束：{game.winner.faction === 'none' ? 'GM 强制结束' : `${factionLabel[game.winner.faction]}胜利`}（{victoryReasonLabel[game.winner.reason] ?? '达成胜利条件'}）
         </p>
       )}
 

@@ -30,6 +30,7 @@ const reasonText: Record<string, string> = {
   threeTrueInfo: '三张真情报',
   clearField: '清场',
   secretMission: '完成机密任务',
+  gmForceEnd: 'GM 强制结束',
   falseInfoLimit: '假情报达到上限',
 };
 
@@ -88,6 +89,11 @@ const logTemplates: Record<string, string> = {
   'character.zhenXiang': '{player} 因真相获得一次额外试探。',
   'character.keLong': '{player} 发动克隆，同步 {target} 的情报数量。',
   'mission.completed': '机密任务条件确认：{reason}。',
+  'bot.autoPass': '{player} 自动选择不响应。',
+  'gm.forceAdvance': 'GM 强制推进当前阶段。',
+  'gm.forceEnd': 'GM 强制结束了当前对局。',
+  'gm.forceReceive': 'GM 强制令 {receiver} 接收情报。',
+  'gm.skipTurn': 'GM 跳过了 {player} 的传递阶段。',
 };
 
 const importantKeys = new Set([
