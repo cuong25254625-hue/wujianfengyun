@@ -150,3 +150,9 @@
 - 实现了房主自动转移：房主断线 5 秒后将房主身份转移给已连接玩家（优先在线、已准备、任意其他人），游戏中不转移，仅剩房主一人时保留等重连。
 - 实现了空房间自动清理：最后一人断开后 5 分钟无新连接则标记房间关闭。
 - 客户端添加房主显示与变更通知，RoomPanel 显示当前房主及在线状态，App 收到房主变更事件时弹出 Toast 通知。
+
+## 2026-05-21 重连找不到房间修复
+- 根因：房间持久化原先每 30 秒才保存一次，若创建房间后立刻刷新/离开导致 systemd 更新重启或进程重启，刚创建的房间可能尚未落盘，重启后 `git pull/update` 或服务重启会出现“房间不存在”。
+- 服务端修复：`GameWebSocketServer.broadcastRoom()` 后立即 `saveRooms()`，创建/加入/准备/房主转移/断线状态等房间变更会立即落盘，消除 30 秒丢房窗口。
+- 客户端修复：新增 `WsClient.forgetRoom()`，当收到 `room.notFound`、`reconnect.seatNotFound`、`sync.notInRoom` 时清除本机保存的旧 roomId 和相关待发同步/重连消息，避免反复重连一个已经不存在的旧房间。
+- 验证：`npm run typecheck` ✅；`npm test` ✅（71 测试）；`npm run build` ✅。

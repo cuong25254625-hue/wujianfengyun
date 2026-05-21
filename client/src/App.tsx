@@ -124,10 +124,24 @@ export default function App() {
             return next;
           });
         }
+        if (message.error.code === 'room.notFound' || message.error.code === 'reconnect.seatNotFound' || message.error.code === 'sync.notInRoom') {
+          client.forgetRoom();
+          setRoom(undefined);
+          setRoomIdInput('');
+          previousOwnerUserId.current = undefined;
+          pushToast('warning', '原房间已不存在，已清除本机保存的房间记录');
+        }
         pushToast('error', `${label}失败：${message.error.message}`);
         setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
       }
       if (message.type === 'error') {
+        if (message.error.code === 'room.notFound' || message.error.code === 'reconnect.seatNotFound' || message.error.code === 'sync.notInRoom') {
+          client.forgetRoom();
+          setRoom(undefined);
+          setRoomIdInput('');
+          previousOwnerUserId.current = undefined;
+          pushToast('warning', '原房间已不存在，已清除本机保存的房间记录');
+        }
         pushToast('error', message.error.message);
         setMessages((items) => [`错误：${message.error.message}`, ...items].slice(0, 20));
       }

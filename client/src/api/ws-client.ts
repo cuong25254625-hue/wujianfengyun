@@ -195,9 +195,23 @@ export class WsClient {
     this.reconnectUserId = undefined;
     this.reconnectRoomId = undefined;
     this.displayName = undefined;
+    this.reconnectInFlight = false;
+    this.pendingMessages = this.pendingMessages.filter((message) => message.type !== 'requestSync' && message.type !== 'reconnect');
     if (canUseStorage()) {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
     }
+  }
+
+  forgetRoom(): void {
+    this.reconnectRoomId = undefined;
+    this.reconnectInFlight = false;
+    this.pendingMessages = this.pendingMessages.filter((message) => {
+      if (message.type === 'requestSync' || message.type === 'reconnect') return false;
+      if (message.type === 'roomCommand' && 'roomId' in message.command) return false;
+      if (message.type === 'playerCommand') return false;
+      return true;
+    });
+    this.persistSession();
   }
 
   get reconnectInfo(): { attempt: number; max: number; isReconnecting: boolean } {

@@ -22,6 +22,10 @@ export class GameWebSocketServer {
   // 延迟断开计时器：roomId:userId → timer，用于防止断线重连时的竞态
   private readonly pendingDisconnects = new Map<string, ReturnType<typeof setTimeout>>();
 
+  private persistNow(): void {
+    saveRooms(this.rooms.getAllRoomStates());
+  }
+
   constructor(private readonly port: number) {
     this.wss = new WebSocketServer({ port });
     // 从磁盘恢复之前保存的房间（服务器重启后恢复状态）
@@ -176,6 +180,7 @@ export class GameWebSocketServer {
         this.send(client, { type: 'roomCreated', roomId: runtime.room.roomId });
         this.ack(client, clientCommandId, runtime.room.game?.version);
         this.broadcastRoom(runtime.room.roomId);
+        this.persistNow();
         return;
       }
       case 'JoinRoom': {
@@ -195,6 +200,7 @@ export class GameWebSocketServer {
         this.send(client, { type: 'joinedRoom', roomId: command.roomId });
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.persistNow();
         return;
       }
       case 'UpdateDisplayName': {
@@ -212,6 +218,7 @@ export class GameWebSocketServer {
         }
         this.ack(client, clientCommandId, runtimeResult.value.room.game?.version);
         this.broadcastRoom(command.roomId);
+        this.persistNow();
         return;
       }
       case 'SelectCharacter': {
@@ -304,6 +311,9 @@ export class GameWebSocketServer {
         session: client.session.toView(),
       });
     }
+
+    // 房间状态变化后立即落盘，避免“创建房间后 30 秒内服务重启/崩溃”导致重连找不到房间。
+    this.persistNow();
   }
 
   private handleReconnect(client: ConnectedClient, userId: string, roomId: RoomId, clientCommandId?: string): void {
