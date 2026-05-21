@@ -72,6 +72,7 @@ export default function App() {
   const activeRoomIdRef = useRef<string | undefined>(persistedSession.roomId);
   const currentRoomRef = useRef<RoomView | undefined>();
   const lastRejectedCodeRef = useRef<string | undefined>();
+  const suppressStaleReconnectRejectUntilRef = useRef(0);
 
   const pushToast = (kind: ToastKind, message: string) => {
     const id = `toast_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -110,10 +111,13 @@ export default function App() {
       }
       if (message.type === 'roomCreated') {
         activeRoomIdRef.current = message.roomId;
+        // 创建成功后短时间内可能收到旧 localStorage 座位恢复失败的迟到响应，忽略它，避免误显示“重连/房间不存在”。
+        suppressStaleReconnectRejectUntilRef.current = Date.now() + 3000;
         setRoomIdInput(message.roomId);
       }
       if (message.type === 'joinedRoom') {
         activeRoomIdRef.current = message.roomId;
+        suppressStaleReconnectRejectUntilRef.current = Date.now() + 3000;
         setRoomIdInput(message.roomId);
       }
       if (message.type === 'commandAck') {
@@ -133,6 +137,10 @@ export default function App() {
           pendingLabelsRef.current = next;
         }
         if (message.error.code === 'reconnect.seatNotFound') {
+          if (Date.now() < suppressStaleReconnectRejectUntilRef.current || currentRoomRef.current) {
+            // 创建/加入新房间后，旧房间的 reconnect 失败响应可能迟到；当前已有房间时不能清掉新房间。
+            return;
+          }
           client.forgetRoom();
           activeRoomIdRef.current = undefined;
           currentRoomRef.current = undefined;
@@ -152,17 +160,19 @@ export default function App() {
         lastRejectedCodeRef.current = undefined;
 
         if (code === 'reconnect.seatNotFound') {
-          if (!currentRoomRef.current) {
-            client.forgetRoom();
-            activeRoomIdRef.current = undefined;
-            currentRoomRef.current = undefined;
-            setRoom(undefined);
-            setRoomIdInput('');
-            previousOwnerUserId.current = undefined;
-            if (!isDuplicateRejectError) {
-              pushToast('warning', '原房间已不存在，已清除本机保存的房间记录');
-              setMessages((items) => ['提示：原房间已不存在，已清除本机保存的房间记录', ...items].slice(0, 20));
-            }
+          if (Date.now() < suppressStaleReconnectRejectUntilRef.current || currentRoomRef.current) {
+            // 旧房间恢复失败的 error 可能晚于新房间创建/加入成功到达，不能因此显示错误或清掉新房间。
+            return;
+          }
+          client.forgetRoom();
+          activeRoomIdRef.current = undefined;
+          currentRoomRef.current = undefined;
+          setRoom(undefined);
+          setRoomIdInput('');
+          previousOwnerUserId.current = undefined;
+          if (!isDuplicateRejectError) {
+            pushToast('warning', '原房间已不存在，已清除本机保存的房间记录');
+            setMessages((items) => ['提示：原房间已不存在，已清除本机保存的房间记录', ...items].slice(0, 20));
           }
           return;
         }

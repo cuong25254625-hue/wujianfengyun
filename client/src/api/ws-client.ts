@@ -147,6 +147,8 @@ export class WsClient {
         // 仅在座位恢复明确失败时结束 reconnect；普通 requestSync/room.notFound 不应打断重连流程。
         if (msg.type === 'commandRejected' && msg.error.code === 'reconnect.seatNotFound') {
           this.reconnectInFlight = false;
+          // 旧房间恢复失败后不要立刻 flush CreateRoom/JoinRoom 之外的旧队列，避免 requestSync 或旧房间命令抢跑。
+          this.pendingMessages = this.pendingMessages.filter((message) => message.type !== 'requestSync' && message.type !== 'reconnect');
           this.flushPendingMessages();
         }
       }
@@ -166,6 +168,11 @@ export class WsClient {
   }
 
   send(message: ClientMessage): void {
+    // 用户主动创建/加入新房间时，旧房间恢复流程已经不再有意义，先结束等待，避免 UI 长时间停留在“正在重连”。
+    if (message.type === 'roomCommand' && (message.command.type === 'CreateRoom' || message.command.type === 'JoinRoom')) {
+      this.reconnectInFlight = false;
+      this.pendingMessages = this.pendingMessages.filter((item) => item.type !== 'requestSync' && item.type !== 'reconnect');
+    }
     this.rememberOutgoingMessage(message);
     if (!this.socket || this.socket.readyState === WebSocket.CONNECTING || this.socket.readyState === WebSocket.CLOSING || this.socket.readyState === WebSocket.CLOSED) {
       this.pendingMessages.push(message);
