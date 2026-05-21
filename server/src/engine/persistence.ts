@@ -23,8 +23,12 @@ let saveTimer: ReturnType<typeof setInterval> | undefined;
  * 初始化持久化目录。
  */
 export function initPersistence(): void {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.error('[persistence] 初始化持久化目录失败:', (err as Error).message);
   }
 }
 
