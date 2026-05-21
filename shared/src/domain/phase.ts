@@ -11,6 +11,7 @@ export type GamePhase =
   | 'InfoSettle'
   | 'DyingWindow'
   | 'DeathSettle'
+  | 'JigsawRound'
   | 'TurnEnd'
   | 'GameOver';
 
@@ -21,7 +22,8 @@ export type PhaseContext =
   | { type: 'pendingAction'; pendingActionIds: string[] }
   | { type: 'dying'; playerId: PlayerId; cause: string }
   | { type: 'death'; candidates: string[] }
-  | { type: 'victory'; candidates: string[] };
+  | { type: 'victory'; candidates: string[] }
+  | { type: 'jigsawRound'; activePlayerId: PlayerId };
 
 export interface PhaseState {
   phase: GamePhase;

@@ -9,7 +9,11 @@ export type PlayerCommand =
   | UseCharacterSkillCommand
   | UseFinalPkBurnCommand
   | DeclareVictoryCommand
-  | PassPendingActionCommand;
+  | PassPendingActionCommand
+  | ZhuGeStarMarkCommand
+  | SwapTransferInfoCommand
+  | SmithRedirectCommand
+  | SwitchGenderCommand;
 
 export interface DeclareTransferCommand {
   type: 'DeclareTransfer';
@@ -77,6 +81,31 @@ export interface PassPendingActionCommand {
   type: 'PassPendingAction';
   playerId: PlayerId;
   pendingActionId: string;
+}
+
+export interface ZhuGeStarMarkCommand {
+  type: 'ZhuGeStarMark';
+  playerId: PlayerId;
+  targetPlayerId: PlayerId;
+}
+
+export interface SwapTransferInfoCommand {
+  type: 'SwapTransferInfo';
+  playerId: PlayerId;
+  myInfoId: InfoId;
+  transferInfoId: InfoId;
+}
+
+export interface SmithRedirectCommand {
+  type: 'SmithRedirect';
+  playerId: PlayerId;
+  transferId: string;
+  newTargetPlayerId: PlayerId;
+}
+
+export interface SwitchGenderCommand {
+  type: 'SwitchGender';
+  playerId: PlayerId;
 }
 
 export type RoomClientCommand =

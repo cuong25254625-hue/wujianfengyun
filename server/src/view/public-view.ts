@@ -59,6 +59,7 @@ const phaseHintText: Record<GamePhase, string> = {
   InfoSettle: '系统正在结算情报归属。',
   DyingWindow: '濒死玩家可以尝试濒死技能，否则将结算死亡。',
   DeathSettle: '系统正在结算死亡和身份公开。',
+  JigsawRound: '竖锯轮进行中，所有人禁止人物技能和宣胜。',
   TurnEnd: '当前回合即将结束。',
   GameOver: '游戏已经结束。',
 };
@@ -138,6 +139,27 @@ const buildSystemHints = (state: GameState, viewerUserId?: UserId): SystemHintVi
     }
   }
 
+  // 竖锯轮提示
+  if (state.jigsawRoundActive) {
+    const markName = state.jigsawMark ? playerName(state, state.jigsawMark) : '未知';
+    hints.push({
+      level: 'warning',
+      title: '竖锯轮进行中',
+      message: `竖锯轮内所有人禁止人物技能和宣胜。当前标记目标：${markName}。`,
+      relatedPhase: 'JigsawRound',
+    });
+  }
+
+  // 牢狱提示
+  if (viewer && viewer.flags['prison_marked']) {
+    hints.push({
+      level: 'warning',
+      title: '牢狱标记',
+      message: '你被搜查或死于御剑之手，技能阶段禁止使用人物技能。推进到下一位玩家时清除。',
+      relatedPhase: state.phase.phase,
+    });
+  }
+
   // 提示白方任务完成
   if (viewer && viewer.faction === 'white' && viewer.missionStatus === 'met') {
     hints.push({
@@ -215,6 +237,7 @@ export const toPublicPlayerView = (state: GameState, playerId: string, viewerUse
     regularSkills: player.regularSkills,
     ownSkills: [...getRegularSkillViews(player.regularSkills), ...characterSkillViews(player)],
     privateLog: visiblePrivateLogEntries(state, viewer, player),
+    prison: Boolean(player.flags['prison_marked']),
   };
 };
 
@@ -235,6 +258,8 @@ export const toPublicGameView = (state: GameState, viewerUserId?: UserId): Publi
     publicLog: visiblePublicLogEntries(state, viewerPlayerForUser(state, viewerUserId)),
     winner: state.winState.winner,
     version: state.version,
+    jigsawRoundActive: (state as GameState & { jigsawRoundActive?: boolean }).jigsawRoundActive ?? false,
+    starMarkCount: (state as GameState & { starMarks?: Set<string> }).starMarks?.size ?? 0,
   };
 
   if (state.currentTransfer) {

@@ -33,6 +33,36 @@
 - **手机端 UI/排版专项优化**（2026-05-21）：进一步按手机优先优化信息层级。对局中央状态头在移动端 sticky、系统提示更紧凑；当前操作底部浮层增加拖拽把手视觉、横屏小高度专项断点；玩家座位卡压缩并隐藏低优先级信息，≤390px 小屏进一步收缩头像和文本；日志面板改为 details 折叠结构，手机端默认展示重点记录，完整记录隐藏以降低信息噪音；横屏 ≤520px 高度使用 4 列紧凑座位网格。
 - **基础人物第二批接入**：按用户确认，012/013/018/019 继续暂缓；本轮新增 003/005/007/010/011/015/021/022/023/024/025 共 11 个中等复杂基础人物进入可玩池，角色池扩展到 21 个，8 人局每人可获得 2 个私密候选。新增角色均为 MVP 简化技能与简化白方任务，完整复杂规则后续逐步还原。
 
+## 2026-05-21 第二批角色原规则还原
+- **诸葛亮八阵星标记**（重大改动）：
+  - 新增 GameState 级全局 `starMarks: Set<PlayerId>`，房间恢复时保留
+  - 新增命令 `ZhuGeStarMark`，可在 SkillWindow/ReactionWindow/DyingWindow 中使用
+  - 每个 SkillWindowReactWindow 最多 1 标记；全场最多 3 标记
+  - 新增事件 `StarMarked/StarMarkFailed`；新增日志 `skill.zhuGeStarMark/tooMany`
+  - 八阵技能重写：星标记≥3时可弃全体星标记使本回合下家不能宣告胜利
+  - 七星技能已就绪
+- **御剑怜侍牢狱**：
+  - 搜查技能：查看一名玩家隐藏角色+将其情报全部盖伏
+  - 牢狱机制：被搜查/被御剑造成死亡的玩家获得一个 `prison` 标记
+  - 有 `prison` 标记者技能阶段禁止使用技能
+  - 牢狱在推进到下一位玩家时清除
+  - 新增事件 `PrisonMarked/SkillPhaseBlocked`
+- **约翰克莱默竖锯轮**（较大改动）：
+  - 新增 `jigsawRoundActive/jigsawMark` 到 GameState；新增 `PHASE_JigsawRound`
+  - 添加 `enterJigsawRound/advanceJigsawRound/checkJigsawDeathAfterPass` 方法
+  - 竖锯轮内所有人禁止人物技能+禁止宣胜
+  - 传递情报时额外烧毁竖锯标记情报
+  - 死于竖锯的玩家给竖锯+1额外假情报
+  - 支持两轮竖锯（全存活玩家各执行一轮，非仅当前回合玩家）
+- **秋山深一欺诈交换**：在 ReactionWindow 中可交换传递中的情报与手牌（MVP简化为交换双方已有情报），新增 `SwapTransferInfo` 命令
+- **魏忠贤性别切换**：宦党技能可在 SkillWindow 中切换性别，同回合可立即使用厂卫；添加 `switchGender`/`canUseGenderSkill` 方法
+- **其他还原**：
+  - 弥海砂开眼：新增主动查看隐藏角色能力
+  - 贝尔摩德保密：被锁定时仅对贝尔摩德有效果（锁定目标无效但不扩展）
+  - 史密斯夫妇谍战：可在 ReactionWindow 中改传递方（MVP简化为redirect transfer）
+- 新增 1 个测试（诸葛亮星标记），总测试数 92 → 93
+- Git 分支策略：master/main；npm run typecheck ✅；npm test ✅（93 测试）；npm run build ✅
+
 ## 2026-05-21 自动提取
 - 用户优先要求优化手机端适配问题
 

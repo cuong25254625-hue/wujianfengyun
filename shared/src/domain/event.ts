@@ -35,7 +35,10 @@ export type SetupEvent =
 
 export type PhaseEvent =
   | { type: 'PhaseChanged'; from: GamePhase; to: GamePhase; context: PhaseContext }
-  | { type: 'TurnAdvanced'; roundNumber: number; activeSeatIndex: number };
+  | { type: 'TurnAdvanced'; roundNumber: number; activeSeatIndex: number }
+  | { type: 'JigsawRoundStarted'; whitePlayerId: PlayerId; markPlayerId: PlayerId }
+  | { type: 'JigsawRoundAdvanced'; fromPlayerId: PlayerId; toPlayerId: PlayerId }
+  | { type: 'JigsawRoundExited' };
 
 export type TransferEvent =
   | { type: 'TransferDeclared'; transferId: string; fromPlayerId: PlayerId; targetPlayerId: PlayerId; declaredTruth: 'true' | 'false' }
@@ -51,7 +54,12 @@ export type CharacterSkillEvent =
   | { type: 'CharacterSkillUsed'; sourcePlayerId: PlayerId; skillId: string; targetPlayerId?: PlayerId; secondaryTargetPlayerId?: PlayerId }
   | { type: 'CharacterRevealed'; playerId: PlayerId; characterId: CharacterId; characterName: string }
   | { type: 'CharacterSkillDisabled'; sourcePlayerId: PlayerId; targetPlayerId: PlayerId; skillId: string; untilTurnSerial: number }
-  | { type: 'CharacterSkillLost'; playerId: PlayerId; skillId: string };
+  | { type: 'CharacterSkillLost'; playerId: PlayerId; skillId: string }
+  | { type: 'StarMarked'; sourcePlayerId: PlayerId; targetPlayerId: PlayerId }
+  | { type: 'StarMarkFailed'; sourcePlayerId: PlayerId; reason: string }
+  | { type: 'PrisonMarked'; playerId: PlayerId; sourcePlayerId: PlayerId }
+  | { type: 'SkillPhaseBlocked'; playerId: PlayerId; reason: string }
+  | { type: 'FraudSwapped'; playerId: PlayerId; fromPlayerId: PlayerId; toPlayerId: PlayerId };
 
 export type InfoEvent =
   | { type: 'InfoBurned'; infoId: string; ownerPlayerId: PlayerId; sourcePlayerId?: PlayerId; reason: string }

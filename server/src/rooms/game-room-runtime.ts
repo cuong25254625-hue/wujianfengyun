@@ -45,6 +45,15 @@ export class GameRoomRuntime {
     for (const seat of room.seats) seat.connected = false;
     const instance = Object.create(GameRoomRuntime.prototype) as GameRoomRuntime;
     (instance as { room: GameRoom }).room = room;
+    // 恢复 starMarks（Set 在 JSON 序列化后丢失，需要重建）
+    if (room.game) {
+      const g = room.game as GameState & { starMarks?: unknown };
+      if (!g.starMarks || !(g.starMarks instanceof Set)) {
+        g.starMarks = new Set();
+      }
+      if (g.jigsawRoundActive === undefined) g.jigsawRoundActive = false;
+      if (g.jigsawMark === undefined) g.jigsawMark = null;
+    }
     return instance;
   }
 
@@ -328,6 +337,14 @@ export class GameRoomRuntime {
         return this.handleFinalPkBurn(game, command.playerId, command.targetPlayerId);
       case 'ReceiveInfo':
         return this.handleReceiveInfo(game, command.playerId, command.transferId, command.decision);
+      case 'ZhuGeStarMark':
+        return this.handleZhuGeStarMark(game, command.playerId, command.targetPlayerId);
+      case 'SwapTransferInfo':
+        return this.handleSwapTransferInfo(game, command.playerId, command.myInfoId, command.transferInfoId);
+      case 'SmithRedirect':
+        return this.handleSmithRedirect(game, command.playerId, command.transferId, command.newTargetPlayerId);
+      case 'SwitchGender':
+        return this.handleSwitchGender(game, command.playerId);
     }
   }
 
@@ -382,6 +399,10 @@ export class GameRoomRuntime {
     if (!player || player.aliveState !== 'alive') return err('victory.notAlive', '只有存活玩家可以宣胜');
     if (player.faction !== faction) return err('victory.wrongFaction', '只能宣告自己阵营的胜利');
     if (Object.values(game.players).some((item) => item.aliveState === 'dying')) return err('victory.deathFirst', '存在濒死玩家，必须先结算死亡');
+    // 八阵/其他效果禁止宣胜
+    if (typeof player.flags['no_victory_declare_until_turn'] === 'number' && (player.flags['no_victory_declare_until_turn'] as number) >= game.turn.turnSerial) {
+      return err('victory.blocked', '你本回合被禁止宣告胜利');
+    }
 
     // 白方宣胜：检查机密任务
     if (faction === 'white') {
@@ -627,6 +648,14 @@ export class GameRoomRuntime {
       startDying: (game, pid, cause) => rt.startDying(game, pid, cause),
       openPendingAction: (game, kind, ids, ctx) => rt.openPendingAction(game, kind as never, ids, ctx as never),
       enterPhase: (game, phase, ctx) => rt.enterPhase(game, phase as never, ctx as never),
+      markStar: (game, pid, tid) => rt.markStarOnTurnProgress(game, pid, tid),
+      starMarkCount: (game) => (game.starMarks?.size ?? 0),
+      clearStarMarks: (game) => { rt.clearStarMarks(game); },
+      enterJigsawRound: (game, pid) => rt.enterJigsawRound(game, pid),
+      markPrison: (game, targetId, sourceId) => rt.markPrison(game, targetId, sourceId),
+      coverUpInfo: (game, targetId) => rt.coverUpInfo(game, targetId),
+      allInfoIds: (game, pid) => rt.infoIdsAll(game, pid),
+      switchGender: (player, newGender) => { player.gender = newGender; },
     };
   }
 
@@ -986,7 +1015,33 @@ export class GameRoomRuntime {
     return ok(this.afterInfoChanged(game));
   }
 
+  // ────────────── 新增命令处理器 ──────────────
+
+  private handleZhuGeStarMark(game: GameState, playerId: PlayerId, targetPlayerId: PlayerId): DomainResult<GameState> {
+    return this.handleCharacterSkill(game, playerId, 'ba_zhen', targetPlayerId);
+  }
+
+  private handleSwapTransferInfo(game: GameState, playerId: PlayerId, _myInfoId: string, _transferInfoId: string): DomainResult<GameState> {
+    const input = { targetPlayerId: undefined as PlayerId | undefined, secondaryTargetPlayerId: undefined as PlayerId | undefined, transfer: undefined };
+    return this.handleCharacterSkill(game, playerId, 'fraudSwap', undefined, undefined, { targetPlayerId: game.currentTransfer?.fromPlayerId ?? playerId, truth: 'false' });
+  }
+
+  private handleSmithRedirect(game: GameState, playerId: PlayerId, _transferId: string, newTargetPlayerId: PlayerId): DomainResult<GameState> {
+    return this.handleCharacterSkill(game, playerId, 'smithRedirect', newTargetPlayerId);
+  }
+
+  private handleSwitchGender(game: GameState, playerId: PlayerId): DomainResult<GameState> {
+    return this.handleCharacterSkill(game, playerId, 'switchGender');
+  }
+
   private advanceTurn(game: GameState): GameState {
+    // 清除旧牢狱标记（推进到下一位玩家）
+    this.clearPrisonOnAdvance(game);
+    // 竖锯轮内部切换（非退出）
+    if (game.jigsawRoundActive && game.jigsawMark) {
+      return this.advanceJigsawRound(game, game.jigsawMark);
+    }
+
     const aliveSeats = Object.values(game.players).filter((player) => player.aliveState === 'alive').sort((a, b) => a.seatIndex - b.seatIndex);
     if (aliveSeats.length === 0) {
       game.status = 'finished';
@@ -1149,6 +1204,9 @@ export class GameRoomRuntime {
       deathQueue: [],
       winState: { finished: false },
       version: events.length,
+      starMarks: new Set(),
+      jigsawRoundActive: false,
+      jigsawMark: null,
     };
     this.autoSelectBotCharacters(state);
     if (this.room.seats.every((item) => Boolean(item.selectedCharacterId))) this.finalizeCharacterSelection(state);
@@ -1315,6 +1373,13 @@ export class GameRoomRuntime {
       .map((info) => info.infoId);
   }
 
+  /** 获取玩家全部情报 ID（不分真假）。 */
+  infoIdsAll(game: GameState, playerId: PlayerId): InfoId[] {
+    return Object.values(game.infoCards)
+      .filter((info) => info.ownerPlayerId === playerId)
+      .map((info) => info.infoId);
+  }
+
   private hasSkill(player: Player | undefined, skillId: string): boolean {
     if (!player) return false;
     if (skillId === 'zhao_zhang' && player.flags.zhao_zhang_lost) return false;
@@ -1351,8 +1416,14 @@ export class GameRoomRuntime {
   }
 
   private isCharacterSkillDisabled(game: GameState, player: Player): boolean {
+    // 异议等技能禁止
     const until = player.flags.character_skill_disabled_until_turn_serial;
-    return typeof until === 'number' && until >= game.turn.turnSerial;
+    if (typeof until === 'number' && until >= game.turn.turnSerial) return true;
+    // 牢狱标记禁止
+    if (player.flags['prison_marked']) return true;
+    // 竖锯轮中禁止人物技能
+    if (game.jigsawRoundActive) return true;
+    return false;
   }
 
   private rememberIdentity(player: Player, targetPlayerId: PlayerId, faction: Faction, source: 'probe' | 'skill' | 'system'): void {
@@ -1368,6 +1439,136 @@ export class GameRoomRuntime {
     if (player.characterRevealed || !player.characterId || !player.characterName) return;
     player.characterRevealed = true;
     this.appendEvent(game, { type: 'CharacterRevealed', playerId: player.playerId, characterId: player.characterId, characterName: player.characterName });
+  }
+
+  // ────────────── 星标记系统（诸葛亮「八阵」）──────────────
+
+  /** 诸葛亮星标记：在当前回合窗口标记一名玩家，全场最多 3 个。 */
+  markStarOnTurnProgress(game: GameState, playerId: PlayerId, targetPlayerId: PlayerId): DomainResult<number> {
+    // 初始化 GameState 上的 starMarks（持久化恢复保护）
+    if (!game.starMarks) game.starMarks = new Set();
+    if (game.starMarks.size >= 3) return err('starMark.limit', '星标记已达到全场上限（3个）');
+    // 同窗口已有标记则拒绝
+    const existing = [...game.starMarks].some((id) => {
+      const p = game.players[id];
+      return p && p.flags['star_mark_window_turn'] === game.turn.turnSerial;
+    });
+    if (existing) return err('starMark.windowUsed', '当前窗口已有星标记');
+    game.starMarks.add(targetPlayerId);
+    const target = game.players[targetPlayerId];
+    if (target) target.flags['star_mark_window_turn'] = game.turn.turnSerial;
+    this.appendEvent(game, { type: 'StarMarked', sourcePlayerId: playerId, targetPlayerId });
+    this.addLog(game, 'skill.zhuGeStarMark', { player: this.playerName(game, playerId), target: this.playerName(game, targetPlayerId), count: game.starMarks.size });
+    return ok(game.starMarks.size);
+  }
+
+  restoreStarMarks(game: GameState): void {
+    if (!game.starMarks) game.starMarks = new Set();
+  }
+
+  clearStarMarks(game: GameState): void {
+    game.starMarks = new Set();
+  }
+
+  // ────────────── 竖锯轮系统（约翰克莱默「竖锯」）──────────────
+
+  enterJigsawRound(game: GameState, playerId: PlayerId): DomainResult<GameState> {
+    if (game.jigsawRoundActive) return err('jigsaw.alreadyActive', '竖锯轮已经激活');
+    const alive = Object.values(game.players).filter((p) => p.aliveState === 'alive');
+    if (alive.length < 2) return err('jigsaw.tooFewAlive', '存活玩家不足');
+    game.jigsawRoundActive = true;
+    const firstPlayer = alive[0]!;
+    game.jigsawMark = firstPlayer.playerId;
+    this.appendEvent(game, { type: 'JigsawRoundStarted', whitePlayerId: playerId, markPlayerId: firstPlayer.playerId });
+    this.addLog(game, 'skill.jigsawStarted', { player: this.playerName(game, playerId), mark: firstPlayer.displayName });
+    // 第一轮竖锯
+    return ok(this.advanceJigsawRound(game, firstPlayer.playerId));
+  }
+
+  advanceJigsawRound(game: GameState, currentPlayerId: PlayerId): GameState {
+    const alive = Object.values(game.players).filter((p) => p.aliveState === 'alive');
+    const currentIdx = alive.findIndex((p) => p.playerId === currentPlayerId);
+    if (currentIdx < 0) {
+      // 当前玩家不存活，退出竖锯轮
+      return this.exitJigsawRound(game);
+    }
+    const nextIdx = (currentIdx + 1) % alive.length;
+    if (nextIdx === 0) {
+      // 已经完成一轮所有玩家，退出竖锯轮
+      return this.exitJigsawRound(game);
+    }
+    const nextPlayer = alive[nextIdx]!;
+    game.jigsawMark = nextPlayer.playerId;
+    this.appendEvent(game, { type: 'JigsawRoundAdvanced', fromPlayerId: currentPlayerId, toPlayerId: nextPlayer.playerId });
+    this.addLog(game, 'skill.jigsawAdvanced', { from: this.playerName(game, currentPlayerId), to: nextPlayer.displayName });
+    // 竖锯轮中所有人禁止人物技能+禁止宣胜
+    nextPlayer.flags['jigsaw_disabled'] = true;
+    const allAliveIds = alive.map((p) => p.playerId);
+    return this.enterPhase(game, 'JigsawRound', { type: 'jigsawRound', activePlayerId: nextPlayer.playerId });
+  }
+
+  exitJigsawRound(game: GameState): GameState {
+    game.jigsawRoundActive = false;
+    game.jigsawMark = null;
+    // 清除竖锯禁用标记
+    for (const player of Object.values(game.players)) {
+      delete player.flags['jigsaw_disabled'];
+    }
+    this.appendEvent(game, { type: 'JigsawRoundExited' });
+    this.addLog(game, 'skill.jigsawExited', { playerCount: Object.values(game.players).filter((p) => p.aliveState === 'alive').length });
+    return this.advanceTurn(game);
+  }
+
+  /** 竖锯轮传递后检查死亡结算。 */
+  checkJigsawDeathAfterPass(game: GameState): GameState {
+    const dying = this.firstDyingCandidate(game);
+    if (dying) return this.startDying(game, dying, 'falseInfoLimit');
+    // 死于竖锯的玩家给竖锯 +1 额外假情报
+    const deadFromJigsaw = Object.values(game.players).filter(
+      (p) => p.aliveState === 'dead' && p.flags['last_false_info_source'] && game.players[p.flags['last_false_info_source'] as PlayerId]?.characterId === 'char_010_john_kramer',
+    );
+    for (const dead of deadFromJigsaw) {
+      const jigsaw = Object.values(game.players).find((p) => p.characterId === 'char_010_john_kramer' && p.aliveState === 'alive');
+      if (jigsaw) {
+        this.addInfo(game, jigsaw.playerId, 'false', dead.playerId, 'jigsaw_death');
+        this.addLog(game, 'skill.jigsawDeathBonus', { player: dead.displayName, jigsawPlayer: jigsaw.displayName });
+      }
+    }
+    return game;
+  }
+
+  // ────────────── 牢狱系统（御剑怜侍「搜查」）──────────────
+
+  markPrison(game: GameState, targetPlayerId: PlayerId, sourcePlayerId: PlayerId): void {
+    const target = game.players[targetPlayerId];
+    if (!target) return;
+    target.flags['prison_marked'] = true;
+    target.flags['prison_source'] = sourcePlayerId;
+    this.appendEvent(game, { type: 'PrisonMarked', playerId: targetPlayerId, sourcePlayerId });
+  }
+
+  /** 推进回合时清除牢狱标记。 */
+  clearPrisonOnAdvance(game: GameState): void {
+    for (const player of Object.values(game.players)) {
+      if (player.flags['prison_marked']) {
+        delete player.flags['prison_marked'];
+        delete player.flags['prison_source'];
+      }
+    }
+  }
+
+  /** 盖伏玩家情报（将公开情报标为非公开）。 */
+  coverUpInfo(game: GameState, targetPlayerId: PlayerId): void {
+    for (const info of Object.values(game.infoCards)) {
+      if (info.ownerPlayerId === targetPlayerId) {
+        info.public = false;
+      }
+    }
+  }
+
+  /** 切换玩家性别（魏忠贤「宦党」）。 */
+  switchGender(game: GameState, player: Player): void {
+    player.gender = player.gender === 'male' ? 'female' : 'male';
   }
 
   private addInfo(game: GameState, ownerPlayerId: PlayerId, truth: 'true' | 'false', sourcePlayerId: PlayerId | undefined, reason: string): InfoId {

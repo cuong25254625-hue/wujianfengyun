@@ -77,6 +77,12 @@ export interface GameState {
   deathQueue: unknown[];
   winState: WinState;
   version: number;
+  /** 诸葛亮「八阵」全场星标记集合（最多 3 个）。 */
+  starMarks: Set<PlayerId>;
+  /** 竖锯轮是否激活（约翰克莱默「竖锯」）。 */
+  jigsawRoundActive: boolean;
+  /** 竖锯轮当前被标记的玩家。 */
+  jigsawMark: PlayerId | null;
 }
 
 export interface TurnState {

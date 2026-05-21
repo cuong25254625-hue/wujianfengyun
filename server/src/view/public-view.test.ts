@@ -48,6 +48,9 @@ const createState = (): GameState => {
     deathQueue: [],
     winState: { finished: false },
     version: 1,
+    starMarks: new Set(),
+    jigsawRoundActive: false,
+    jigsawMark: null,
   };
 };
 

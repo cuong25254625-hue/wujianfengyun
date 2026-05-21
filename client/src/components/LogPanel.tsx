@@ -127,6 +127,25 @@ const logTemplates: Record<string, string> = {
   'gm.forceEnd': 'GM 强制结束了当前对局。',
   'gm.forceReceive': 'GM 强制令 {receiver} 接收情报。',
   'gm.skipTurn': 'GM 跳过了 {player} 的传递阶段。',
+  'skill.zhuGeStarMark': '{player} 对 {target} 放置了星标记（第 {count}/3 个）。',
+  'skill.zhuGeEightFormation': '{player} 发动八阵，弃掉全部 {count} 个星标记，下一位玩家本回合不能宣告胜利。',
+  'skill.zhuGeBlockVictory': '{player} 发动八阵，{target} 本回合不能宣告胜利。',
+  'skill.tooManyStarMarks': '星标记已达到上限（3个），无法继续放置。',
+  'skill.prisonMarked': '{player} 对 {target} 施加了牢狱标记。',
+  'skill.prisonBlocked': '{target} 因牢狱标记在技能阶段被禁止使用人物技能。',
+  'skill.jigsawStarted': '{player} 发动竖锯，对 {mark} 启动竖锯轮。',
+  'skill.jigsawAdvanced': '竖锯轮推进：{from} → {to}。',
+  'skill.jigsawExited': '竖锯轮结束，恢复正常游戏。',
+  'skill.jigsawBurned': '{player} 在竖锯轮中烧毁 {mark} 面前 {count} 张情报。',
+  'skill.jigsawDeathBonus': '{jigsawPlayer} 因 {player} 死于竖锯，获得额外假情报。',
+  'skill.fraudSwapped': '{player} 发动欺诈交换，与 {target} 交换了情报。',
+  'skill.genderSwitched': '{player} 切换性别为{gender}。',
+  'skill.confidentialBlocked': '{player} 发动保密，令锁定无效化。',
+  'skill.smithRedirected': '{player} 发动谍战，将接收方从 {from} 改为 {to}。',
+  'skill.kaiYanView': '你通过开眼查看了 {target} 的角色：{character}（{hidden}）、阵营：{faction}。',
+  'skill.kaiYanViewPublic': '{player} 对 {target} 发动开眼。',
+  'skill.jiaoJiExtended': '你通过交际扩展获知 {target} 的阵营：{faction}。',
+  'skill.jiaoJiExtendedPublic': '{player} 对 {target} 发动交际扩展。',
 };
 
 const importantKeys = new Set([
@@ -143,6 +162,12 @@ const importantKeys = new Set([
   'finalPk.whiteWinByTransfers',
   'finalPk.whiteWinByOpponentDeath',
   'finalPk.endedByDeath',
+  'skill.zhuGeEightFormation',
+  'skill.prisonMarked',
+  'skill.jigsawStarted',
+  'skill.jigsawExited',
+  'skill.fraudSwapped',
+  'skill.smithRedirected',
 ]);
 
 function formatPublicLog(entry: PublicLogEntry): string {

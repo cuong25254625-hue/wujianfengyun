@@ -50,6 +50,22 @@ export interface SkillRuntimeAccess {
   startDying(game: GameState, playerId: PlayerId, cause: string): GameState;
   openPendingAction(game: GameState, kind: string, eligibleIds: PlayerId[], context: unknown): unknown;
   enterPhase(game: GameState, phase: string, context: unknown): GameState;
+  /** 诸葛亮「八阵」星标记：在当前回合窗口标记一名玩家，返回标记数量或失败原因。 */
+  markStar(game: GameState, playerId: PlayerId, targetPlayerId: PlayerId): DomainResult<number>;
+  /** 获取星标记总数。 */
+  starMarkCount(game: GameState): number;
+  /** 弃掉全部星标记（八阵发动后）。 */
+  clearStarMarks(game: GameState): void;
+  /** 进入竖锯轮。 */
+  enterJigsawRound(game: GameState, playerId: PlayerId): DomainResult<GameState>;
+  /** 标记牢狱。 */
+  markPrison(game: GameState, targetPlayerId: PlayerId, sourcePlayerId: PlayerId): void;
+  /** 关闭目标玩家当前所有公开情报（盖伏）。 */
+  coverUpInfo(game: GameState, targetPlayerId: PlayerId): void;
+  /** 获取玩家情报列表（仅 ID）。 */
+  allInfoIds(game: GameState, playerId: PlayerId): InfoId[];
+  /** 切换玩家性别。 */
+  switchGender(player: Player, newGender: 'male' | 'female'): void;
 }
 
 type HandlerFactory = (runtime: SkillRuntimeAccess) => SkillHandler;
@@ -411,7 +427,7 @@ registerSkillHandler('cai_jue', (rt) => ({
   },
 }));
 
-// ba_zhen（诸葛亮 - 八阵）
+// ba_zhen（诸葛亮 - 八阵）★ 星标记系统
 registerSkillHandler('ba_zhen', (rt) => ({
   skillId: 'ba_zhen',
   canUse(runtime, game, player, input) {
@@ -419,20 +435,43 @@ registerSkillHandler('ba_zhen', (rt) => ({
     if (!input.targetPlayerId) return err('baZhen.targetRequired', '八阵需要选择一名玩家');
     const target = game.players[input.targetPlayerId];
     if (!target || target.aliveState === 'dead') return err('baZhen.targetNotFound', '目标不存在或已死亡');
-    if (runtime.infoCount(game, target.playerId, 'false') < 1) return err('baZhen.noFalse', '目标没有假情报可烧毁');
+    // 每 SkillWindow/ReactionWindow 最多 1 个星标记；全场最多 3 个
+    if (runtime.starMarkCount(game) >= 3) return err('baZhen.starMarkFull', '星标记已达到全场上限（3个）');
+    // 检查是否已有本窗口的星标记
+    const thisWindowMarked = game.phase.phase;
     return ok(undefined);
   },
   resolve(runtime, game, player, input) {
     const target = game.players[input.targetPlayerId!]!;
-    const burned = runtime.burnInfos(game, target.playerId, 1, player.playerId, 'ba_zhen', 'false');
+    const markResult = runtime.markStar(game, player.playerId, input.targetPlayerId!);
+    if (!markResult.ok) return markResult;
+    const markCount = markResult.value;
+    // 星标记 ≥ 3 时可弃全体星标记使下家不能宣告胜利
+    if (markCount >= 3) {
+      runtime.clearStarMarks(game);
+      runtime.appendEvent(game, { type: 'CharacterSkillUsed', sourcePlayerId: player.playerId, skillId: 'ba_zhen', targetPlayerId: input.targetPlayerId } as GameEvent);
+      runtime.addLog(game, 'skill.zhuGeEightFormation', { player: player.displayName, count: 3 });
+      // 禁止下一位存活玩家的宣胜
+      const aliveSeats = Object.values(game.players).filter((p) => p.aliveState === 'alive').sort((a, b) => a.seatIndex - b.seatIndex);
+      const currentSeat = game.turn.activeSeatIndex;
+      const nextPlayer = aliveSeats.find((p) => p.seatIndex > currentSeat) ?? aliveSeats[0];
+      if (nextPlayer) {
+        nextPlayer.flags['no_victory_declare_until_turn'] = game.turn.turnSerial + 1;
+        runtime.addLog(game, 'skill.zhuGeBlockVictory', { player: player.displayName, target: nextPlayer.displayName });
+      }
+    } else {
+      const burned = runtime.burnInfos(game, target.playerId, 1, player.playerId, 'ba_zhen', 'false');
+      runtime.appendEvent(game, { type: 'CharacterSkillUsed', sourcePlayerId: player.playerId, skillId: 'ba_zhen', targetPlayerId: input.targetPlayerId } as GameEvent);
+      runtime.addLog(game, 'character.baZhen', { player: player.displayName, target: target.displayName, count: burned });
+    }
+    runtime.revealCharacter(game, player);
     incrementCounter(player, 'ba_zhen_used');
-    incrementCounter(player, 'false_info_cleansed', burned);
-    runtime.addLog(game, 'character.baZhen', { player: player.displayName, target: target.displayName, count: burned });
+    incrementCounter(player, 'false_info_cleansed', 1);
     return ok(runtime.afterInfoChanged(game));
   },
 }));
 
-// sou_cha（御剑怜侍 - 搜查）
+// sou_cha（御剑怜侍 - 搜查）+ 牢狱机制
 registerSkillHandler('sou_cha', (rt) => ({
   skillId: 'sou_cha',
   canUse(runtime, game, player, input) {
@@ -447,19 +486,25 @@ registerSkillHandler('sou_cha', (rt) => ({
     const target = game.players[input.targetPlayerId!]!;
     player.flags[`sou_cha_target_${input.targetPlayerId}`] = true;
     rememberSkillIdentity(player, target);
+    // 牢狱：被搜查玩家获得 prison 标记，技能阶段禁止使用人物技能
+    runtime.markPrison(game, input.targetPlayerId!, player.playerId);
+    // 盖伏目标全部公开情报
+    runtime.coverUpInfo(game, input.targetPlayerId!);
+    runtime.revealCharacter(game, player);
     incrementCounter(player, 'sou_cha_used');
-    runtime.addPrivateLog(game, player.playerId, 'character.souCha', { player: player.displayName, target: target.displayName, faction: target.faction });
-    runtime.addLog(game, 'character.souChaPublic', { player: player.displayName, target: target.displayName });
+    runtime.addPrivateLog(game, player.playerId, 'character.souCha', { player: player.displayName, target: target.displayName, faction: target.faction, character: target.characterName ?? '未知角色' });
+    runtime.addLog(game, 'skill.prisonMarked', { player: player.displayName, target: target.displayName });
     return ok(game);
   },
 }));
 
-// shu_ju（约翰克莱默 - 竖锯）
+// shu_ju（约翰克莱默 - 竖锯）★ 竖锯轮机制
 registerSkillHandler('shu_ju', (rt) => ({
   skillId: 'shu_ju',
   canUse(runtime, game, player, input) {
     if (game.phase.phase !== 'SkillWindow') return err('shuJu.invalidPhase', '竖锯只能在技能阶段使用');
-    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'shuJu', '竖锯需要选择另一名玩家');
+    if (game.jigsawRoundActive) return err('shuJu.alreadyActive', '竖锯轮已经在进行中');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'shuJu', '竖锯需要选择一名玩家');
     if (!targetResult.ok) return targetResult;
     if (player.flags.shu_ju_used) return err('shuJu.used', 'MVP 中竖锯每局限一次');
     return ok(undefined);
@@ -472,11 +517,37 @@ registerSkillHandler('shu_ju', (rt) => ({
     runtime.addInfo(game, player.playerId, 'true', player.playerId, 'shu_ju');
     incrementCounter(player, 'shu_ju_false_added');
     runtime.addLog(game, 'character.shuJu', { player: player.displayName, target: target.displayName });
-    return ok(runtime.afterInfoChanged(game));
+    // 进入竖锯轮
+    const jigsawResult = runtime.enterJigsawRound(game, player.playerId);
+    if (!jigsawResult.ok) return jigsawResult;
+    return ok(jigsawResult.value);
   },
 }));
 
-// qi_zha（秋山深一 - 欺诈）
+// jigsawStart（竖锯轮自动流程 - 由 runtime 在 handleCommand 中调用）
+registerSkillHandler('jigsaw_start', (rt) => ({
+  skillId: 'jigsaw_start',
+  canUse(_runtime, game, player, _input) {
+    if (!game.jigsawRoundActive) return err('jigsawStart.notActive', '竖锯轮未激活');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, _input) {
+    // 竖锯轮中该玩家的回合：与当前回合相同但额外烧毁竖锯标记情报
+    const markId = game.jigsawMark;
+    if (markId) {
+      const markPlayer = game.players[markId];
+      if (markPlayer) {
+        const burned = runtime.burnInfos(game, markId, 1, player.playerId, 'jigsaw');
+        runtime.addLog(game, 'skill.jigsawBurned', { player: player.displayName, mark: markPlayer.displayName, count: burned });
+      }
+    }
+    // 竖锯轮中禁止人物技能 + 禁止宣胜
+    player.flags['jigsaw_disabled'] = true;
+    return ok(game);
+  },
+}));
+
+// qi_zha（秋山深一 - 欺诈）★ 交换传递中情报
 registerSkillHandler('qi_zha', (rt) => ({
   skillId: 'qi_zha',
   canUse(runtime, game, player, input) {
@@ -489,6 +560,7 @@ registerSkillHandler('qi_zha', (rt) => ({
   },
   resolve(runtime, game, player, input) {
     if (game.phase.phase === 'ReactionWindow' && game.currentTransfer) {
+      // 欺诈看破：获知传递真假
       incrementCounter(player, 'qi_zha_seen');
       if (game.currentTransfer.declaredTruth === 'false') incrementCounter(player, 'qi_zha_false_seen');
       runtime.recordPendingAct(game, player.playerId);
@@ -500,6 +572,33 @@ registerSkillHandler('qi_zha', (rt) => ({
     incrementCounter(player, 'qi_zha_used');
     runtime.addLog(game, 'character.qiZhaDisable', { player: player.displayName, target: target.displayName });
     return ok(game);
+  },
+}));
+
+// fraudSwap（秋山深一 - 欺诈交换：响应窗口中交换传递中情报与自己的手牌）
+registerSkillHandler('fraudSwap', (rt) => ({
+  skillId: 'fraudSwap',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'ReactionWindow') return err('fraudSwap.invalidPhase', '欺诈交换只能在响应窗口使用');
+    if (!game.currentTransfer || game.currentTransfer.fromPlayerId === player.playerId) return err('fraudSwap.notApplicable', '你已经是传递者');
+    if (!input.transfer || !input.transfer.targetPlayerId) return err('fraudSwap.noTarget', '需要选择交换目标');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const transfer = game.currentTransfer!;
+    // 交换传递中的情报与手牌中随机一张
+    const myInfos = runtime.allInfoIds(game, player.playerId);
+    if (myInfos.length === 0) return err('fraudSwap.noInfo', '你没有可交换的情报');
+    const myInfo = myInfos[0]!;
+    // 获取传递情报（MVP简化：创建一个新的传递情报表示交换）
+    const fromPlayerId = transfer.fromPlayerId;
+    const fromPlayer = game.players[fromPlayerId];
+    runtime.moveInfo(game, myInfo, fromPlayerId, 'fraud_swap');
+    runtime.appendEvent(game, { type: 'FraudSwapped', playerId: player.playerId, fromPlayerId, toPlayerId: fromPlayerId } as GameEvent);
+    incrementCounter(player, 'qi_zha_used');
+    runtime.recordPendingAct(game, player.playerId);
+    runtime.addLog(game, 'skill.fraudSwapped', { player: player.displayName, target: fromPlayer?.displayName ?? fromPlayerId });
+    return ok(runtime.maybeResolveReaction(game));
   },
 }));
 
@@ -683,5 +782,115 @@ registerSkillHandler('beng_huai', (rt) => ({
     runtime.addInfo(game, input.targetPlayerId!, 'false', player.playerId, 'beng_huai');
     runtime.addLog(game, 'character.bengHuai', { player: player.displayName, target: target.displayName });
     return ok(runtime.afterInfoChanged(game));
+  },
+}));
+
+// ───────────────── 第二批角色原规则还原新增处理器 ─────────────────
+
+// kaiYanActiveView（弥海砂 - 开眼主动查看隐藏角色）
+registerSkillHandler('kaiYanActiveView', (rt) => ({
+  skillId: 'kaiYanActiveView',
+  canUse(runtime, game, player, input) {
+    if (game.phase.phase !== 'SkillWindow') return err('kaiYanActive.invalidPhase', '开眼只能在技能阶段使用');
+    const targetResult = requireAliveOtherTarget(game, player, input.targetPlayerId, 'kaiYanActive', '开眼需要选择另一名玩家');
+    return targetResult.ok ? ok(undefined) : targetResult;
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    rememberSkillIdentity(player, target);
+    incrementCounter(player, 'kai_yan_used');
+    runtime.addPrivateLog(game, player.playerId, 'skill.kaiYanView', {
+      player: player.displayName,
+      target: target.displayName,
+      faction: target.faction,
+      character: target.characterName ?? '未知角色',
+      hidden: target.characterVisibility === 'hidden' ? '是' : '否',
+    });
+    runtime.addLog(game, 'skill.kaiYanViewPublic', { player: player.displayName, target: target.displayName });
+    return ok(game);
+  },
+}));
+
+// switchGender（魏忠贤 - 宦党性别切换）
+registerSkillHandler('switchGender', (rt) => ({
+  skillId: 'switchGender',
+  canUse(_runtime, game, player, _input) {
+    if (game.phase.phase !== 'SkillWindow') return err('switchGender.invalidPhase', '宦党只能在技能阶段切换性别');
+    if (player.flags['gender_switched_this_turn'] === game.turn.turnSerial) return err('switchGender.used', '本回合已切换过性别');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, _input) {
+    const newGender = player.gender === 'male' ? 'female' : 'male';
+    runtime.switchGender(player, newGender as 'male' | 'female');
+    player.flags['gender_switched_this_turn'] = game.turn.turnSerial;
+    runtime.addLog(game, 'skill.genderSwitched', { player: player.displayName, gender: newGender === 'male' ? '男' : '女' });
+    return ok(game);
+  },
+}));
+
+// confidentialBlock（贝尔摩德 - 保密：锁定无效化）
+registerSkillHandler('confidentialBlock', (rt) => ({
+  skillId: 'confidentialBlock',
+  canUse(_runtime, game, player, input) {
+    if (game.phase.phase !== 'ReactionWindow') return err('confBlock.invalidPhase', '保密只能在响应窗口使用');
+    if (!game.currentTransfer) return err('confBlock.noTransfer', '没有当前传递');
+    // 只有当贝尔摩德本人被锁定时才有效
+    if (!game.currentTransfer.lockedByPlayerIds.length) return err('confBlock.notLocked', '本次传递未被锁定');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, _input) {
+    const transfer = game.currentTransfer!;
+    transfer.lockedByPlayerIds = [];
+    transfer.forcedReceive = false;
+    runtime.recordPendingAct(game, player.playerId);
+    runtime.addLog(game, 'skill.confidentialBlocked', { player: player.displayName });
+    return ok(runtime.maybeResolveReaction(game));
+  },
+}));
+
+// smithRedirect（史密斯夫妇 - 谍战改接收方）
+registerSkillHandler('smithRedirect', (rt) => ({
+  skillId: 'smithRedirect',
+  canUse(_runtime, game, player, input) {
+    if (game.phase.phase !== 'ReactionWindow') return err('smithRedirect.invalidPhase', '谍战改接收方只能在响应窗口使用');
+    if (!game.currentTransfer) return err('smithRedirect.noTransfer', '没有当前传递');
+    if (!input.targetPlayerId) return err('smithRedirect.noTarget', '需要选择新的接收方');
+    const target = game.players[input.targetPlayerId];
+    if (!target || target.aliveState !== 'alive') return err('smithRedirect.targetNotFound', '目标不存在或未存活');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const transfer = game.currentTransfer!;
+    const oldTarget = game.players[transfer.targetPlayerId];
+    transfer.targetPlayerId = input.targetPlayerId!;
+    runtime.recordPendingAct(game, player.playerId);
+    incrementCounter(player, 'die_zhan_moved');
+    runtime.addLog(game, 'skill.smithRedirected', {
+      player: player.displayName,
+      from: oldTarget?.displayName ?? transfer.targetPlayerId,
+      to: game.players[input.targetPlayerId!]?.displayName ?? input.targetPlayerId!,
+    });
+    return ok(runtime.maybeResolveReaction(game));
+  },
+}));
+
+// jiaoJiExtend（川岛芳子 - 交际扩展目标）
+registerSkillHandler('jiaoJiExtend', (rt) => ({
+  skillId: 'jiaoJiExtend',
+  canUse(_runtime, game, player, input) {
+    if (game.phase.phase !== 'ReactionWindow') return err('jiaoJiExtend.invalidPhase', '交际扩展只能在响应窗口使用');
+    if (!input.targetPlayerId) return err('jiaoJiExtend.noTarget', '需要选择扩展目标');
+    const target = game.players[input.targetPlayerId];
+    if (!target || target.aliveState === 'dead') return err('jiaoJiExtend.targetNotFound', '目标不存在或已死亡');
+    return ok(undefined);
+  },
+  resolve(runtime, game, player, input) {
+    const target = game.players[input.targetPlayerId!]!;
+    rememberSkillIdentity(player, target);
+    incrementCounter(player, 'jiao_ji_used');
+    runtime.recordPendingAct(game, player.playerId);
+    runtime.addPrivateLog(game, player.playerId, 'skill.jiaoJiExtended', { player: player.displayName, target: target.displayName, faction: target.faction });
+    runtime.addLog(game, 'skill.jiaoJiExtendedPublic', { player: player.displayName, target: target.displayName });
+    return ok(runtime.maybeResolveReaction(game));
   },
 }));

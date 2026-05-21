@@ -71,6 +71,10 @@ export interface PublicGameView {
   publicLog: PublicLogEntry[];
   winner?: WinState['winner'];
   version: number;
+  /** 竖锯轮是否激活。 */
+  jigsawRoundActive?: boolean;
+  /** 星标记总数（诸葛亮八阵）。 */
+  starMarkCount?: number;
 }
 
 export interface PublicPlayerView {
@@ -97,6 +101,8 @@ export interface PrivatePlayerView extends PublicPlayerView {
   regularSkills: RegularSkillState;
   ownSkills: SkillView[];
   privateLog: PrivateLogEntry[];
+  /** 是否被牢狱标记，标记期间技能阶段禁止使用人物技能。 */
+  prison: boolean;
 }
 
 export interface PublicCurrentTransferView {
@@ -143,6 +149,7 @@ export const phaseLabel: Record<GamePhase, string> = {
   InfoSettle: '情报结算',
   DyingWindow: '濒死阶段',
   DeathSettle: '死亡结算',
+  JigsawRound: '竖锯轮',
   TurnEnd: '回合结束',
   GameOver: '游戏结束',
 };
