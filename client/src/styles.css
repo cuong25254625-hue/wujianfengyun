@@ -6,11 +6,21 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  touch-action: manipulation;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
   background:
     radial-gradient(circle at top, rgba(126, 76, 36, 0.22), transparent 36rem),
     linear-gradient(135deg, #10131f 0%, #17100c 52%, #090b12 100%);
@@ -1057,6 +1067,7 @@ button:disabled {
   border-radius: 999px;
 }
 
+/* ===== Tablet / medium screen (≤1180px) ===== */
 @media (max-width: 1180px) {
   .game-shell {
     grid-template-columns: 1fr;
@@ -1073,29 +1084,28 @@ button:disabled {
   }
 
   .in-game-shell .table-arena {
-    height: min(82vh, 820px);
-    min-height: 680px;
+    height: auto;
+    min-height: 70vh;
+    overflow: visible;
   }
 
   .in-game-shell .table-center {
     width: clamp(280px, 34vw, 390px);
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    margin: 0 auto 12px;
+    z-index: 2;
   }
 
   .in-game-shell .seat-card {
     --seat-radius: min(29vw, 32vh, 330px);
   }
 
-  .table-panel {
-    order: 1;
-  }
-
-  .left-panel {
-    order: 2;
-  }
-
-  .right-panel {
-    order: 3;
-  }
+  .table-panel { order: 1; }
+  .left-panel { order: 2; }
+  .right-panel { order: 3; }
 
   .log-list,
   .in-game-shell .log-list {
@@ -1105,63 +1115,120 @@ button:disabled {
   .phase-track {
     grid-template-columns: repeat(4, minmax(82px, 1fr));
   }
+
+  .table-arena {
+    overscroll-behavior: contain;
+  }
 }
 
+/* ===== Tablet / small screen (≤900px) ===== */
 @media (max-width: 900px) {
   main,
   .in-game-main {
-    padding: 12px;
+    padding: 10px 8px;
   }
 
   .compact-header {
     display: block;
+    margin-bottom: 4px;
   }
 
-  /* Sticky game center on mobile so actions are always visible */
-  .table-center,
-  .in-game-shell .table-center {
-    position: sticky;
-    top: 8px;
-    z-index: 5;
-    width: 100%;
-    max-height: none;
-    border-radius: 18px;
-    margin-bottom: 12px;
+  .compact-header h1 {
+    font-size: 18px;
   }
 
+  /* Toast stays at top on mobile for visibility */
   .toast-container {
-    top: 12px;
+    position: fixed;
+    top: 8px;
     bottom: auto;
-    width: min(92vw, 420px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(94vw, 420px);
+    z-index: 100;
   }
 
   .toast {
-    padding: 12px 16px;
-    font-size: 15px;
+    padding: 10px 14px;
+    font-size: 14px;
   }
 
+  /* Reconnect banner sticky at top */
   .reconnect-banner {
     position: sticky;
-    top: 8px;
+    top: 0;
     z-index: 20;
+    border-radius: 0;
+    margin: 0 -8px 8px;
   }
 
+  /* GM toolbar compact */
   .gm-toolbar {
     position: sticky;
-    top: 8px;
+    top: 52px;
     left: auto;
     z-index: 18;
     justify-content: center;
     border-radius: 14px;
+    padding: 6px 10px;
+    gap: 6px;
+    margin: 0 4px 6px;
   }
 
+  .gm-toolbar button {
+    min-height: 34px;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Table arena: remove ring layout, use grid; ensure controls are visible */
   .table-arena,
   .in-game-shell .table-arena {
     height: auto;
     min-height: auto;
-    overflow: hidden;
+    max-height: none;
+    padding: 12px 8px;
+    overflow: visible;
+    overflow-y: visible;
   }
 
+  .table-center,
+  .in-game-shell .table-center {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    width: 100%;
+    max-height: none;
+    min-height: auto;
+    border-radius: 14px;
+    margin: 0 0 14px;
+    padding: 14px;
+    z-index: 2;
+    overflow: visible;
+  }
+
+  .in-game-shell .table-center h2 {
+    font-size: 18px;
+  }
+
+  /* Important: game control cards must be visible and prominent on mobile */
+  .table-control-card .subcard {
+    margin-top: 6px;
+    padding: 10px;
+    border: 1px solid rgba(255, 217, 142, 0.28);
+    background: rgba(13, 16, 27, 0.88);
+  }
+
+  .table-control-card .actions-panel {
+    gap: 10px;
+  }
+
+  .table-control-card .action-focus {
+    border-width: 2px;
+  }
+
+  /* Seat cards become a grid below the controls */
   .seat-ring,
   .seat-card {
     position: static;
@@ -1170,49 +1237,84 @@ button:disabled {
 
   .seat-ring {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 10px;
   }
 
   .seat-card {
     width: auto;
+    min-height: 100px;
+    grid-template-columns: 64px minmax(0, 1fr);
+    border-radius: 12px;
   }
 
-  /* Touch-friendly button sizes */
+  .seat-card-image img {
+    width: 58px;
+    height: 76px;
+    border-radius: 8px;
+  }
+
+  .card-back.large {
+    width: 58px;
+    height: 76px;
+    border-radius: 8px;
+    font-size: 11px;
+  }
+
+  .seat-card-body {
+    padding: 7px 8px;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+
+  .seat-title strong {
+    font-size: 12px;
+  }
+
+  .in-game-shell .seat-card-body p {
+    font-size: 10px;
+  }
+
+  /* Touch-friendly buttons */
   button {
-    min-height: 44px;
-    min-width: 44px;
-    padding: 12px 16px;
-    font-size: 15px;
+    min-height: 42px;
+    min-width: 42px;
+    padding: 10px 14px;
+    font-size: 14px;
+    border-radius: 10px;
   }
 
   .table-control-card button {
-    min-height: 44px;
-    font-size: 14px;
+    min-height: 42px;
+    font-size: 13px;
   }
 
-  /* Important action buttons get extra emphasis */
   .action-focus button {
-    min-width: 120px;
-    min-height: 48px;
+    min-width: 110px;
+    min-height: 46px;
   }
 
-  /* Select/input touch targets */
+  /* Inputs */
   input,
   select {
-    padding: 12px;
-    font-size: 16px;
+    padding: 10px 12px;
+    font-size: 16px; /* ≥16px to prevent iOS zoom */
+    border-radius: 10px;
   }
 
-  /* Sticky log on mobile to keep feedback visible */
+  /* Log panel */
   .right-panel {
-    max-height: 40vh;
+    max-height: 50vh;
   }
 
-  /* Toast on mobile appears at top for visibility while scrolling */
-  .toast-container {
-    top: 12px;
-    bottom: auto;
+  .log-list,
+  .in-game-shell .log-list {
+    max-height: 280px;
+  }
+
+  .log-entry {
+    font-size: 12px;
+    padding: 6px 8px;
   }
 
   .my-dashboard,
@@ -1224,7 +1326,603 @@ button:disabled {
     justify-content: flex-start;
   }
 
+  .status-strip span {
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+
   .phase-track {
-    grid-template-columns: repeat(2, minmax(110px, 1fr));
+    grid-template-columns: repeat(4, minmax(60px, 1fr));
+    gap: 4px;
+    margin: 8px 0;
+  }
+
+  .phase-step {
+    padding: 6px 2px;
+    font-size: 10px;
+  }
+
+  .phase-step strong {
+    font-size: 10px;
+  }
+
+  .phase-step span {
+    width: 18px;
+    height: 18px;
+    font-size: 10px;
+  }
+
+  /* Character choice grid more compact */
+  .character-choice-grid {
+    grid-template-columns: repeat(auto-fit, minmax(82px, 1fr));
+    gap: 6px;
+    max-height: 280px;
+  }
+
+  .character-choice img {
+    width: 48px;
+    height: 64px;
+    border-radius: 6px;
+  }
+
+  .character-choice span {
+    font-size: 11px;
+  }
+}
+
+/* ===== Phone landscape (≤640px) ===== */
+@media (max-width: 640px) {
+  main,
+  .in-game-main {
+    padding: 6px 4px;
+  }
+
+  .compact-header h1 {
+    font-size: 17px;
+  }
+
+  .compact-header p {
+    font-size: 11px;
+  }
+
+  /* Toast further up */
+  .toast-container {
+    top: 4px;
+    width: min(96vw, 400px);
+  }
+
+  .toast {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  /* GM toolbar even smaller */
+  .gm-toolbar {
+    top: 48px;
+    padding: 4px 8px;
+    gap: 4px;
+  }
+
+  /* Table arena: scrollable, controls fixed at top */
+  .table-arena,
+  .in-game-shell .table-arena {
+    min-height: auto;
+    max-height: none;
+    padding: 8px 4px;
+    overflow: visible;
+    overflow-y: visible;
+  }
+
+  .table-center,
+  .in-game-shell .table-center {
+    padding: 10px;
+    border-radius: 12px;
+    margin: 0 0 10px;
+    overflow: visible;
+  }
+
+  .in-game-shell .table-center h2 {
+    font-size: 16px;
+  }
+
+  .table-center .game-card-header p,
+  .table-center p {
+    font-size: 11px;
+  }
+
+  /* Game controls: make action-focus cards prominent */
+  .table-control-card .subcard {
+    padding: 10px;
+    margin-top: 6px;
+    border: 1px solid rgba(255, 217, 142, 0.32);
+  }
+
+  .table-control-card .action-focus {
+    border-width: 2px;
+  }
+
+  .table-control-card .action-focus h3 {
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+
+  .table-control-card .actions-panel {
+    gap: 10px;
+  }
+
+  /* Seat cards: 2 per row on phone landscape */
+  .seat-ring {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .seat-card {
+    min-height: 90px;
+    grid-template-columns: 56px minmax(0, 1fr);
+    border-radius: 10px;
+  }
+
+  .seat-card-image {
+    padding: 4px;
+  }
+
+  .seat-card-image img {
+    width: 52px;
+    height: 68px;
+    border-radius: 6px;
+  }
+
+  .card-back.large {
+    width: 52px;
+    height: 68px;
+    border-radius: 6px;
+    font-size: 10px;
+  }
+
+  .seat-card-body {
+    padding: 5px 6px;
+    font-size: 10px;
+    line-height: 1.2;
+  }
+
+  .seat-title strong {
+    font-size: 11px;
+  }
+
+  .seat-badges {
+    gap: 3px;
+    margin-bottom: 3px;
+  }
+
+  /* Mobile bottom action bar: float the current action at screen bottom */
+  .in-game-shell .table-control-card .action-focus {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    margin: 0;
+    border-radius: 16px 16px 0 0;
+    padding: 14px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    border: 1px solid rgba(255, 217, 142, 0.48);
+    border-bottom: 0;
+    background: rgba(13, 16, 27, 0.98);
+    box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.55);
+    max-height: 55vh;
+    overflow-y: auto;
+  }
+
+  .in-game-shell .table-control-card .action-focus h3 {
+    font-size: 17px;
+    margin-bottom: 8px;
+  }
+
+  .in-game-shell .table-control-card .action-focus label {
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  .in-game-shell .table-control-card .action-focus select,
+  .in-game-shell .table-control-card .action-focus input {
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+
+  /* Add bottom padding to main to account for floating action bar */
+  .in-game-main:has(.table-control-card .action-focus) {
+    padding-bottom: 140px;
+  }
+
+  /* Quick action bar: full-width buttons */
+  .table-control-card .actions {
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .table-control-card .actions button {
+    flex: 1 1 auto;
+    min-width: 100px;
+    min-height: 44px;
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+
+  /* Log at bottom scroll */
+  .right-panel {
+    max-height: 35vh;
+    overflow: auto;
+  }
+
+  .log-list,
+  .in-game-shell .log-list {
+    max-height: 220px;
+  }
+
+  .log-entry {
+    font-size: 11px;
+    padding: 5px 6px;
+  }
+
+  .log-section h3 {
+    font-size: 12px;
+  }
+
+  /* Phase track: 4 columns compact */
+  .phase-track {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    margin: 6px 0;
+  }
+
+  .phase-step {
+    padding: 4px 1px;
+    border-radius: 8px;
+  }
+
+  .phase-step strong {
+    font-size: 9px;
+  }
+
+  .phase-step span {
+    width: 16px;
+    height: 16px;
+    font-size: 9px;
+  }
+
+  /* Character choice */
+  .character-choice-grid {
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    max-height: 240px;
+  }
+
+  .character-choice img {
+    width: 42px;
+    height: 56px;
+  }
+
+  .character-choice span {
+    font-size: 10px;
+  }
+
+  /* Room panel compact */
+  .card {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  /* Skill popover fills screen */
+  .skill-popover-card {
+    width: 96%;
+    max-height: 80%;
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .skill-popover-card h3 {
+    font-size: 16px;
+  }
+
+  /* My dashboard single column */
+  .my-dashboard {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .my-character img,
+  .player-character img {
+    width: 72px;
+    height: 96px;
+  }
+
+  .skill-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Phone portrait (≤480px) ===== */
+@media (max-width: 480px) {
+  main,
+  .in-game-main {
+    padding: 4px 2px;
+  }
+
+  .compact-header h1 {
+    font-size: 16px;
+  }
+
+  .compact-header p {
+    display: none; /* hide subtitle on tiny screens */
+  }
+
+  .toast-container {
+    top: 2px;
+  }
+
+  .toast {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Reconnect banner minimal */
+  .reconnect-banner {
+    padding: 8px;
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .reconnect-now-button {
+    padding: 5px 10px;
+    font-size: 11px;
+  }
+
+  /* GM toolbar: hide labels, icons only */
+  .gm-toolbar {
+    top: 44px;
+    padding: 4px 6px;
+    gap: 3px;
+    border-radius: 10px;
+  }
+
+  .gm-toolbar button {
+    min-height: 30px;
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  /* Table arena: full height, scrollable, controls prominent at top */
+  .table-arena,
+  .in-game-shell .table-arena {
+    min-height: 65vh;
+    max-height: none;
+    padding: 6px 2px;
+    overflow: visible;
+    overflow-y: visible;
+  }
+
+  .table-center,
+  .in-game-shell .table-center {
+    padding: 8px;
+    border-radius: 10px;
+    margin: 0 0 8px;
+    overflow: visible;
+  }
+
+  .in-game-shell .table-center h2 {
+    font-size: 15px;
+  }
+
+  /* Game control cards: full-width, prominent borders */
+  .table-control-card .subcard {
+    padding: 10px;
+    margin-top: 6px;
+    border: 1px solid rgba(255, 217, 142, 0.32);
+    border-radius: 10px;
+  }
+
+  .table-control-card .action-focus {
+    border-width: 2px;
+  }
+
+  .table-control-card .action-focus h3 {
+    font-size: 16px;
+    margin-bottom: 6px;
+  }
+
+  .table-control-card .actions-panel {
+    gap: 10px;
+  }
+
+  /* Make status strip stack vertically */
+  .table-control-card .status-strip {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+
+  .table-control-card .status-strip span {
+    width: fit-content;
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+
+  /* Game card header: single column */
+  .table-control-card .game-card-header {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  /* Seat cards: single column on portrait phone */
+  .seat-ring {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .seat-card {
+    min-height: 80px;
+    grid-template-columns: 48px minmax(0, 1fr);
+    border-radius: 8px;
+  }
+
+  .seat-card-image img {
+    width: 44px;
+    height: 58px;
+    border-radius: 4px;
+  }
+
+  .card-back.large {
+    width: 44px;
+    height: 58px;
+    border-radius: 4px;
+    font-size: 9px;
+  }
+
+  .seat-card-body {
+    padding: 4px 5px;
+    font-size: 9px;
+  }
+
+  .seat-title strong {
+    font-size: 10px;
+  }
+
+  /* Mobile bottom action bar: current action floats at screen bottom */
+  .in-game-shell .table-control-card .action-focus {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    margin: 0;
+    border-radius: 16px 16px 0 0;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+    border: 1px solid rgba(255, 217, 142, 0.52);
+    border-bottom: 0;
+    background: rgba(13, 16, 27, 0.98);
+    box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.55);
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+
+  .in-game-shell .table-control-card .action-focus h3 {
+    font-size: 17px;
+    margin-bottom: 8px;
+  }
+
+  .in-game-shell .table-control-card .action-focus label {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  .in-game-shell .table-control-card .action-focus select,
+  .in-game-shell .table-control-card .action-focus input {
+    font-size: 16px;
+    padding: 10px 12px;
+  }
+
+  .in-game-main:has(.table-control-card .action-focus) {
+    padding-bottom: 130px;
+  }
+
+  /* Action buttons: full-width stacked */
+  .table-control-card .actions {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .table-control-card .actions button {
+    width: 100%;
+    min-height: 46px;
+    font-size: 14px;
+  }
+
+  .action-focus button {
+    min-height: 50px;
+  }
+
+  /* All buttons full-width and big */
+  button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  /* Phase track: hide on tiny screens */
+  .phase-track {
+    display: none;
+  }
+
+  /* Log panel minimal */
+  .right-panel {
+    max-height: 30vh;
+  }
+
+  .log-list,
+  .in-game-shell .log-list {
+    max-height: 180px;
+  }
+
+  .log-section h3 {
+    font-size: 11px;
+  }
+
+  /* Card padding minimal */
+  .card {
+    padding: 8px;
+    border-radius: 10px;
+  }
+
+  /* Character choice */
+  .character-choice-grid {
+    grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  }
+
+  .character-choice {
+    padding: 6px;
+  }
+
+  .character-choice img {
+    width: 36px;
+    height: 48px;
+  }
+
+  .character-choice span {
+    font-size: 10px;
+  }
+
+  .character-choice small {
+    font-size: 9px;
+  }
+
+  /* Skill popover full screen */
+  .skill-popover-card {
+    width: 100%;
+    max-height: 90%;
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .close-button {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  /* Room panel lobby compact */
+  .lobby-item {
+    flex-wrap: wrap;
+    gap: 4px;
+    font-size: 12px;
+  }
+
+  .lobby-item button {
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+
+  /* Hide room-meta details on tiny screens */
+  .room-meta p {
+    font-size: 11px;
+    margin-bottom: 4px;
   }
 }
