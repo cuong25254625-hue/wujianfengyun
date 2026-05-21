@@ -41,7 +41,8 @@ export class GameRoomRuntime {
 
   /** 从持久化保存的 GameRoom 重建 runtime（服务器重启恢复）。 */
   static fromSaved(room: GameRoom): GameRoomRuntime {
-    // 用已有 room 构造，避免重新调用构造函数覆盖数据
+    // 服务器重启后所有座位标记为断线，等待玩家重新连接
+    for (const seat of room.seats) seat.connected = false;
     const instance = Object.create(GameRoomRuntime.prototype) as GameRoomRuntime;
     (instance as { room: GameRoom }).room = room;
     return instance;
@@ -162,6 +163,38 @@ export class GameRoomRuntime {
     if (!seat) return;
     seat.connected = connected;
     this.touch();
+  }
+
+  /**
+   * 将房主转移到其他已连接玩家。
+   * 当房主断线时调用，保证房间始终有人可以开始游戏或推进。
+   */
+  transferHost(fromUserId: UserId): DomainResult<UserId> {
+    if (this.room.ownerUserId !== fromUserId) return err('room.notOwner', '你不是房主');
+    if (this.room.status !== 'lobby') {
+      // 游戏中房主断线不转移：游戏中不需要房主权限（GM forceAdvance 不依赖 owner）
+      return ok(fromUserId);
+    }
+
+    // 优先选择已连接的玩家，其次选择已准备的玩家
+    const candidates = this.room.seats.filter((s) => s.userId !== fromUserId);
+    if (candidates.length === 0) {
+      // 只剩房主一人断线 — 房主不变，等房主重连
+      return ok(fromUserId);
+    }
+
+    const nextHost = candidates.find((s) => s.connected) ?? candidates.find((s) => s.ready) ?? candidates[0];
+    if (!nextHost) return ok(fromUserId);
+    this.room.ownerUserId = nextHost.userId;
+    nextHost.ready = true; // 新房主默认准备
+    this.touch();
+    console.log(`[host] 房主从 ${fromUserId} 转移到 ${nextHost.userId}（${nextHost.displayName}）`);
+    return ok(nextHost.userId);
+  }
+
+  /** 是否有连接的玩家。用于判断空房间清理。 */
+  hasConnectedPlayers(): boolean {
+    return this.room.seats.some((s) => s.connected);
   }
 
   startGame(userId: UserId): DomainResult<GameState> {

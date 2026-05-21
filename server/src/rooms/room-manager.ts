@@ -38,14 +38,24 @@ export class RoomManager {
     return states;
   }
 
-  /** 从持久化数据恢复房间。仅恢复状态非 'closed' 的房间。 */
+  /** 从持久化数据恢复房间。仅恢复状态非 'closed' 且有座位的房间。 */
   restoreFromPersistence(rooms: Map<string, import('@wujian/shared').GameRoom>): void {
     for (const [roomId, room] of rooms) {
       if (room.status === 'closed') continue;
-      // 根据保存的 room 数据重建 runtime
+      if (room.seats.length === 0) continue;
+      // 根据保存的 room 数据重建 runtime（服务器重启后所有座位标记为断线）
       const runtime = GameRoomRuntime.fromSaved(room);
       this.rooms.set(roomId as RoomId, runtime);
       console.log(`[persistence] 恢复房间 ${roomId}（${room.seats.length} 名玩家，状态 ${room.status}）`);
+    }
+  }
+
+  /** 清理所有 closed 状态的房间。 */
+  cleanClosed(): void {
+    for (const [roomId, runtime] of this.rooms) {
+      if (runtime.room.status === 'closed') {
+        this.rooms.delete(roomId);
+      }
     }
   }
 }

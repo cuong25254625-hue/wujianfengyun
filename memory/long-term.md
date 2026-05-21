@@ -107,8 +107,46 @@
 - 额外改进：回退场景下用 `effectiveRoomId` 替换原 `roomId`，确保后续 broadcast/close-old-connection 用正确 roomId。
 - 验证：`typecheck` ✅ `test` ✅（71 测试） `build` ✅。
 
+## 2026-05-20 断线重连第三次增强（房主转移 + 空房间清理 + 跨进程重启恢复）
+
+### 房主转移机制
+- 新增 `GameRoomRuntime.transferHost(fromUserId)` 方法：
+  - 大厅中断线时自动转移给已连接玩家（优先在线 > 已准备 > 任意其他玩家）
+  - 游戏中不转移房主（GM forceAdvance 不依赖 owner）
+  - 只剩房主一人时保留原房主身份等待重连
+- 客户端 `RoomPanel` 显示当前房主名称和在线/离线状态
+- `App.tsx` 收到 `roomView` 时检测房主变更并 Toast 通知
+
+### 空房间自动清理
+- 大厅房间最后一人断开后，等待 5 分钟无人连接则标记为 `closed`
+- `RoomManager.cleanClosed()` 可清理 closed 房间
+
+### 跨进程重启持久化增强
+- `GameRoomRuntime.fromSaved` 现在将所有座位标记为 `connected: false`
+- 重启后玩家重连时通过 `handleReconnect` 恢复连接状态
+- `restoreFromPersistence` 跳过空座位房间
+
+### 客户端房主状态优化
+- 房间信息面板现在显示房主名称和在线状态
+- 房主离线时显示"将在断线后自动转移给在线玩家"
+- 开始游戏按钮仅在全员准备后可见
+
+### 验证
+- `npm run typecheck` ✅
+- `npm test` ✅（3 个测试文件、71 个测试）
+- `npm run build` ✅
 
 ## 2026-05-20 自动提取
 - 断线重连问题有三个根因：旧 socket 关闭时的竞态条件触发额外断开计时器；handleReconnect 缺少 findRoomByUser 回退；页面刷新后不主动同步房间状态。
 - 修复方案：关闭旧连接前清除 roomId 防止旧 close 事件误判；添加 findRoomByUser 容错查找；App 不再依赖 wasReconnecting 标记，始终在连接打开且 session 有 roomId 时 requestSync。
 - 修改文件为 server/src/ws/server.ts 和 client/src/App.tsx，全部测试通过，类型检查与构建成功。
+
+## 本地仓库 remote
+- origin: https://github.com/tianyu9527/wujianfengyun.git
+
+
+## 2026-05-20 自动提取
+- 完成了断线重连跨进程重启持久化增强：从保存状态恢复时将座位标记为断开，支持重启后玩家重连恢复。
+- 实现了房主自动转移：房主断线 5 秒后将房主身份转移给已连接玩家（优先在线、已准备、任意其他人），游戏中不转移，仅剩房主一人时保留等重连。
+- 实现了空房间自动清理：最后一人断开后 5 分钟无新连接则标记房间关闭。
+- 客户端添加房主显示与变更通知，RoomPanel 显示当前房主及在线状态，App 收到房主变更事件时弹出 Toast 通知。

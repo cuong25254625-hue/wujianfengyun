@@ -78,10 +78,34 @@ export class GameWebSocketServer {
         const key = disconnectKey(roomId, userId);
         const timer = setTimeout(() => {
           const runtimeResult = this.rooms.getRuntime(roomId);
-          if (runtimeResult.ok) {
-            runtimeResult.value.setConnected(userId, false);
-            this.broadcastRoom(roomId);
+          if (!runtimeResult.ok) {
+            this.pendingDisconnects.delete(key);
+            return;
           }
+          const runtime = runtimeResult.value;
+          runtime.setConnected(userId, false);
+
+          // 房主断线时自动转移给其他在线玩家
+          if (runtime.room.ownerUserId === userId) {
+            runtime.transferHost(userId);
+          }
+
+          // 大厅空房间（无人连接）延迟 5 分钟后清理
+          if (runtime.room.status === 'lobby' && !runtime.hasConnectedPlayers()) {
+            console.log(`[room] 大厅房间 ${roomId} 无人在线，5 分钟后清理`);
+            const cleanupKey = `cleanup:${roomId}`;
+            const cleanupTimer = setTimeout(() => {
+              const checkResult = this.rooms.getRuntime(roomId);
+              if (checkResult.ok && checkResult.value.room.status === 'lobby' && !checkResult.value.hasConnectedPlayers()) {
+                checkResult.value.room.status = 'closed';
+                console.log(`[room] 清理空房间 ${roomId}`);
+              }
+              this.pendingDisconnects.delete(cleanupKey);
+            }, 5 * 60 * 1000);
+            this.pendingDisconnects.set(cleanupKey, cleanupTimer);
+          }
+
+          this.broadcastRoom(roomId);
           this.pendingDisconnects.delete(key);
         }, 5000);
         this.pendingDisconnects.set(key, timer);

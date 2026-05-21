@@ -36,6 +36,7 @@ export function RoomPanel(props: RoomPanelProps) {
   const { room, session } = props;
   const mySeat = room?.seats.find((seat) => seat.userId === session?.userId);
   const isOwner = room?.ownerUserId === session?.userId;
+  const hostSeat = room?.seats.find((seat) => seat.userId === room?.ownerUserId);
   const game = room?.game;
   const me = game?.players.find((player) => player.userId === session?.userId);
   const ccSetupAction = game?.pendingActionsForMe.find((action) => action.kind === 'characterSkillWindow' && action.context.type === 'generic' && action.context.data?.choiceKey === 'ccMissionTarget');
@@ -69,7 +70,7 @@ export function RoomPanel(props: RoomPanelProps) {
       {room && (
         <div className="room-meta">
           <p>当前房间：<strong>{room.roomId}</strong></p>
-          <p>状态：{roomStatusLabel[room.status] ?? room.status}</p>
+          <p>状态：{roomStatusLabel[room.status] ?? room.status}　|　房主：<strong>{hostSeat?.displayName ?? '—'}</strong>{isOwner ? '（你）' : ''}{!hostSeat?.connected ? ' [离线]' : ''}</p>
           {room.status === 'lobby' && (
             <p className="muted">角色将在房主开始游戏后由系统私密发放：每名玩家随机获得 2 个互不重复的候选角色。</p>
           )}
@@ -136,7 +137,9 @@ export function RoomPanel(props: RoomPanelProps) {
           )}
           <div className="actions">
             <button onClick={() => props.onSetReady(!mySeat?.ready)}>{mySeat?.ready ? '取消准备' : '准备'}</button>
-            {isOwner && <button onClick={props.onStartGame}>开始游戏</button>}
+            {isOwner && room.seats.every(s => s.ready || s.userId === session?.userId) && <button onClick={props.onStartGame} className="action-pulse">开始游戏</button>}
+            {isOwner && !room.seats.every(s => s.ready || s.userId === session?.userId) && <button disabled>等待玩家准备</button>}
+            {!isOwner && room.status === 'lobby' && <span className="muted">等待房主开始游戏{hostSeat?.connected ? '' : '（房主离线，将在断线后自动转移给在线玩家）'}</span>}
           </div>
         </div>
       )}

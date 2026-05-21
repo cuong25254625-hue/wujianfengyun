@@ -68,6 +68,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [pendingLabels, setPendingLabels] = useState<Record<string, string>>({});
   const wasReconnecting = useRef(false);
+  const previousOwnerUserId = useRef<string | undefined>();
 
   const pushToast = (kind: ToastKind, message: string) => {
     const id = `toast_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -93,6 +94,12 @@ export default function App() {
     const offMessage = client.onMessage((message: ServerMessage) => {
       if (message.type === 'hello') setSession(message.session);
       if (message.type === 'roomView') {
+        // 检测房主变更并通知
+        if (previousOwnerUserId.current && previousOwnerUserId.current !== message.room.ownerUserId) {
+          const newHost = message.room.seats.find(s => s.userId === message.room.ownerUserId);
+          if (newHost) pushToast('info', `房主已转移：${newHost.displayName}`);
+        }
+        previousOwnerUserId.current = message.room.ownerUserId;
         setRoom(message.room);
         setSession(message.session);
       }
