@@ -56,6 +56,9 @@ export class WsClient {
   // 标记是否正在等待 reconnect 响应，防止 hello 覆盖正确的 userId
   private reconnectInFlight = false;
 
+  // 用户主动创建/加入新房间时，本次连接打开后必须跳过旧房间自动恢复。
+  private suppressReconnectOnNextOpen = false;
+
   constructor() {
     const persisted = loadPersistedSession();
     this.reconnectUserId = persisted.userId;
@@ -79,7 +82,7 @@ export class WsClient {
 
       // 重连成功后，先发送 reconnect 恢复会话；等待 roomView/失败响应后再刷新待发消息。
       // 这样可避免刚建房后的 pending requestSync 先于 reconnect 到达，触发 room.notFound/sync.notInRoom 误清房间。
-      if (this.reconnectUserId && this.reconnectRoomId) {
+      if (!this.suppressReconnectOnNextOpen && this.reconnectUserId && this.reconnectRoomId) {
         this.reconnectInFlight = true;
         this.socket?.send(JSON.stringify({
           type: 'reconnect',
@@ -87,6 +90,7 @@ export class WsClient {
           roomId: this.reconnectRoomId,
         } satisfies ClientMessage));
       } else {
+        this.suppressReconnectOnNextOpen = false;
         if (this.displayName) {
           this.socket?.send(JSON.stringify({ type: 'hello', displayName: this.displayName } satisfies ClientMessage));
         } else {
@@ -170,7 +174,7 @@ export class WsClient {
   send(message: ClientMessage): void {
     // 用户主动创建/加入新房间时，旧房间恢复流程已经不再有意义，先结束等待，避免 UI 长时间停留在“正在重连”。
     if (message.type === 'roomCommand' && (message.command.type === 'CreateRoom' || message.command.type === 'JoinRoom')) {
-      this.reconnectInFlight = false;
+      this.cancelStaleReconnect();
       this.pendingMessages = this.pendingMessages.filter((item) => item.type !== 'requestSync' && item.type !== 'reconnect');
     }
     this.rememberOutgoingMessage(message);
@@ -213,6 +217,7 @@ export class WsClient {
     this.reconnectRoomId = undefined;
     this.displayName = undefined;
     this.reconnectInFlight = false;
+    this.suppressReconnectOnNextOpen = false;
     this.pendingMessages = this.pendingMessages.filter((message) => message.type !== 'requestSync' && message.type !== 'reconnect');
     if (canUseStorage()) {
       window.localStorage.removeItem(SESSION_STORAGE_KEY);
@@ -222,6 +227,7 @@ export class WsClient {
   forgetRoom(): void {
     this.reconnectRoomId = undefined;
     this.reconnectInFlight = false;
+    this.suppressReconnectOnNextOpen = false;
     this.pendingMessages = this.pendingMessages.filter((message) => {
       if (message.type === 'requestSync' || message.type === 'reconnect') return false;
       if (message.type === 'roomCommand' && 'roomId' in message.command) return false;
@@ -280,6 +286,17 @@ export class WsClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
+    }
+  }
+
+  private cancelStaleReconnect(): void {
+    this.reconnectInFlight = false;
+    this.suppressReconnectOnNextOpen = true;
+    this.stopReconnectTimer();
+    this.reconnectAttempts = 0;
+    // 如果当前 UI 已经处于 reconnecting，但底层 socket 其实可用，立即恢复为 open，避免创建/加入新房间时误显示重连中。
+    if (this.socket?.readyState === WebSocket.OPEN) {
+      this.setStatus('open');
     }
   }
 

@@ -236,12 +236,12 @@ export default function App() {
   };
 
   const createRoom = () => {
-    sendHello();
+    // 创建新房间就是开启新会话，不能先发送 hello，否则可能触发旧 roomId 的恢复竞态。
     sendWithFeedback({ type: 'roomCommand', command: { type: 'CreateRoom', displayName } });
   };
 
   const joinRoom = () => {
-    sendHello();
+    // 加入新房间同理，直接由 JoinRoom 携带昵称即可。
     sendWithFeedback({ type: 'roomCommand', command: { type: 'JoinRoom', roomId: roomIdInput.trim() as RoomId, displayName } });
   };
 
