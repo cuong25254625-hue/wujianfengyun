@@ -69,14 +69,31 @@ const buildSystemHints = (state: GameState, viewerUserId?: UserId): SystemHintVi
   const pending = pendingActionsForUser(state, viewerUserId);
   const hints: SystemHintView[] = [];
 
+  // 最终 PK 提示
+  if (state.finalPk) {
+    const whiteName = playerName(state, state.finalPk.whitePlayerId);
+    const opponentName = playerName(state, state.finalPk.opponentPlayerId);
+    const pkWhite = state.finalPk.whitePlayerId === viewer?.playerId;
+    hints.push({
+      level: 'warning',
+      title: '最终 PK 进行中',
+      message: `场上仅剩 ${whiteName}（白方）和 ${opponentName}，进入最终 PK。${pkWhite ? '你可在传递、技能、濒死阶段额外烧毁任意情报一次。' : ''} 累计传递超过 10 张无人胜利则白方获胜。`,
+      actionText: pkWhite ? '可使用额外烧毁' : '尽快宣胜',
+      relatedPhase: state.phase.phase,
+    });
+  }
+
   if (state.winState.winner) {
-    const factionName = state.winState.winner.faction === 'red' ? '红方' : state.winState.winner.faction === 'blue' ? '蓝方' : '白方';
+    const factionName = state.winState.winner.faction === 'red' ? '红方' : state.winState.winner.faction === 'blue' ? '蓝方'
+      : state.winState.winner.faction === 'white' ? '白方' : '无阵营';
     const isWhite = state.winState.winner.faction === 'white' && state.winState.winner.missionPlayerId;
     const whiteName = isWhite ? playerName(state, state.winState.winner.missionPlayerId) : '';
     hints.push({
       level: 'success',
       title: '游戏结束',
-      message: isWhite ? `${whiteName}（白方）通过机密任务宣告胜利。` : `${factionName}已宣告胜利。`,
+      message: state.winState.winner.reason === 'gmForceEnd' ? '游戏已被 GM 强制结束。'
+        : isWhite ? `${whiteName}（白方）通过机密任务宣告胜利。`
+        : `${factionName}已宣告胜利。`,
       relatedPhase: 'GameOver',
     });
     return hints;
@@ -119,6 +136,17 @@ const buildSystemHints = (state: GameState, viewerUserId?: UserId): SystemHintVi
         relatedPhase: 'ReceiveDecision',
       });
     }
+  }
+
+  // 提示白方任务完成
+  if (viewer && viewer.faction === 'white' && viewer.missionStatus === 'met') {
+    hints.push({
+      level: 'success',
+      title: '机密任务条件已满足',
+      message: '你的机密任务条件已确认。可在宣胜窗口结束时选择宣告白方胜利。',
+      actionText: '准备宣胜',
+      relatedPhase: state.phase.phase,
+    });
   }
 
   if (state.phase.phase === 'DyingWindow' && state.phase.context.type === 'dying') {

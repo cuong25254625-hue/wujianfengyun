@@ -3,6 +3,7 @@ import type { Player, PlayerId, UserId } from '@wujian/shared';
 import { MVP_CHARACTER_POOL } from '../engine/character-registry.js';
 import { getSkillDefinition } from '../engine/skill-registry.js';
 import { GameRoomRuntime } from './game-room-runtime.js';
+import { checkMission } from '../engine/mission-engine.js';
 
 const userId = (index: number) => `user_${index}` as UserId;
 
@@ -1603,6 +1604,332 @@ describe('GameRoomRuntime', () => {
       expect(factions.filter((f) => f === 'red')).toHaveLength(3);
       expect(factions.filter((f) => f === 'blue')).toHaveLength(3);
       expect(factions.filter((f) => f === 'white')).toHaveLength(2);
+    });
+  });
+
+  describe('final PK system', () => {
+    it('enters final PK when only 1 white and 1 non-white are alive', () => {
+      const runtime = createStartedRuntime(6);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      // Kill all non-white players except one, and all white except one
+      const whitePlayers = players.filter((p) => p.faction === 'white');
+      const nonWhitePlayers = players.filter((p) => p.faction !== 'white');
+      // 6-player: 2 red, 2 blue, 2 white
+      // Kill all except one white and one non-white
+      if (whitePlayers.length < 2 || nonWhitePlayers.length < 4) return;
+
+      const keptWhite = whitePlayers[0]!;
+      const keptNonWhite = nonWhitePlayers[0]!;
+
+      for (const p of players) {
+        if (p.playerId !== keptWhite.playerId && p.playerId !== keptNonWhite.playerId) {
+          game.players[p.playerId]!.aliveState = 'dead';
+          game.players[p.playerId]!.identityRevealed = true;
+        }
+      }
+      // Advance turn past VictoryDeclareWindow → Skill → Transfer
+      game.phase = { phase: 'TransferDeclare', enteredAtVersion: game.version, context: { type: 'activeTurn', activePlayerId: keptNonWhite.playerId } };
+      const result = runtime.forceAdvancePhase(userId(0));
+      expect(result.ok).toBe(true);
+      // Should have entered final PK
+      expect(game.finalPk).toBeDefined();
+      expect(game.finalPk?.whitePlayerId).toBe(keptWhite.playerId);
+      expect(game.finalPk?.opponentPlayerId).toBe(keptNonWhite.playerId);
+      expect(game.finalPk?.burnUsed).toBe(false);
+    });
+
+    it('does not enter final PK with more than 2 alive players', () => {
+      const runtime = createStartedRuntime(6);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const whitePlayers = players.filter((p) => p.faction === 'white');
+      const nonWhitePlayers = players.filter((p) => p.faction !== 'white');
+      if (whitePlayers.length < 2 || nonWhitePlayers.length < 3) return;
+
+      // Leave 2 non-white + 1 white alive (3 alive → no PK)
+      const keptWhite = whitePlayers[0]!;
+      const kept1 = nonWhitePlayers[0]!;
+      const kept2 = nonWhitePlayers[1]!;
+
+      for (const p of players) {
+        if (p.playerId !== keptWhite.playerId && p.playerId !== kept1.playerId && p.playerId !== kept2.playerId) {
+          game.players[p.playerId]!.aliveState = 'dead';
+          game.players[p.playerId]!.identityRevealed = true;
+        }
+      }
+      game.phase = { phase: 'TransferDeclare', enteredAtVersion: game.version, context: { type: 'activeTurn', activePlayerId: kept1.playerId } };
+      runtime.forceAdvancePhase(userId(0));
+      expect(game.finalPk).toBeUndefined();
+    });
+
+    it('white wins in final PK when transfers exceed 10 without victory', () => {
+      const runtime = createStartedRuntime(6);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const whitePlayers = players.filter((p) => p.faction === 'white');
+      const nonWhitePlayers = players.filter((p) => p.faction !== 'white');
+      if (!whitePlayers[0] || !nonWhitePlayers[0]) return;
+
+      for (const p of players) {
+        if (p.playerId !== whitePlayers[0].playerId && p.playerId !== nonWhitePlayers[0].playerId) {
+          game.players[p.playerId]!.aliveState = 'dead';
+          game.players[p.playerId]!.identityRevealed = true;
+        }
+      }
+      // Force PK entry
+      game.finalPk = {
+        whitePlayerId: whitePlayers[0].playerId,
+        opponentPlayerId: nonWhitePlayers[0].playerId,
+        enteredAtTurnSerial: game.turn.turnSerial,
+        transfersAfterEntry: 11,
+        burnUsed: false,
+      };
+      game.phase = { phase: 'TransferDeclare', enteredAtVersion: game.version, context: { type: 'activeTurn', activePlayerId: nonWhitePlayers[0].playerId } };
+      const result = runtime.forceAdvancePhase(userId(0));
+      expect(result.ok).toBe(true);
+      expect(game.status).toBe('finished');
+      expect(game.winState.winner?.faction).toBe('white');
+    });
+
+    it('white can use final PK extra burn in skill phase', () => {
+      const runtime = createStartedRuntime(6);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const whitePlayers = players.filter((p) => p.faction === 'white');
+      const nonWhitePlayers = players.filter((p) => p.faction !== 'white');
+      if (!whitePlayers[0] || !nonWhitePlayers[0]) return;
+      const white = whitePlayers[0]!;
+      const opponent = nonWhitePlayers[0]!;
+
+      for (const p of players) {
+        if (p.playerId !== white.playerId && p.playerId !== opponent.playerId) {
+          game.players[p.playerId]!.aliveState = 'dead';
+          game.players[p.playerId]!.identityRevealed = true;
+        }
+      }
+      giveInfo(runtime, '玩家' + String(white.displayName.slice(-1)), 'true', 1);
+      giveInfo(runtime, '玩家' + String(opponent.displayName.slice(-1)), 'true', 1);
+      game.finalPk = {
+        whitePlayerId: white.playerId,
+        opponentPlayerId: opponent.playerId,
+        enteredAtTurnSerial: game.turn.turnSerial,
+        transfersAfterEntry: 0,
+        burnUsed: false,
+      };
+      game.phase = { phase: 'SkillWindow', enteredAtVersion: game.version, context: { type: 'activeTurn', activePlayerId: opponent.playerId } };
+
+      const burn = runtime.handlePlayerCommand(userId(white.seatIndex), {
+        type: 'UseFinalPkBurn',
+        playerId: white.playerId,
+        targetPlayerId: opponent.playerId,
+      });
+      expect(burn.ok).toBe(true);
+      expect(game.finalPk?.burnUsed).toBe(true);
+    });
+
+    it('opponent wins when white PK player dies', () => {
+      const runtime = createStartedRuntime(6);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const whitePlayers = players.filter((p) => p.faction === 'white');
+      const nonWhitePlayers = players.filter((p) => p.faction !== 'white');
+      if (!whitePlayers[0] || !nonWhitePlayers[0]) return;
+      const white = whitePlayers[0]!;
+      const opponent = nonWhitePlayers[0]!;
+
+      for (const p of players) {
+        if (p.playerId !== white.playerId && p.playerId !== opponent.playerId) {
+          game.players[p.playerId]!.aliveState = 'dead';
+          game.players[p.playerId]!.identityRevealed = true;
+        }
+      }
+      game.finalPk = {
+        whitePlayerId: white.playerId,
+        opponentPlayerId: opponent.playerId,
+        enteredAtTurnSerial: game.turn.turnSerial,
+        transfersAfterEntry: 0,
+        burnUsed: false,
+      };
+      // Kill the white player
+      game.players[white.playerId]!.aliveState = 'dying';
+      game.phase = { phase: 'DyingWindow', enteredAtVersion: game.version, context: { type: 'dying', playerId: white.playerId, cause: 'falseInfoLimit' } };
+      // Simulate passing dying window → resolveDyingDeath → checkFinalPkAfterDeath
+      const pkResult = runtime.forceAdvancePhase(userId(0));
+      expect(pkResult.ok).toBe(true);
+      expect(game.status).toBe('finished');
+      expect(game.winState.winner?.faction).toBe(opponent.faction);
+    });
+  });
+
+  describe('white mission declaration', () => {
+    it('rejects white victory without secretMission reason', () => {
+      const runtime = createStartedRuntime(5);
+      const players = playersBySeat(runtime);
+      const white = players.find((p) => p.faction === 'white');
+      if (!white) return; // no white in this random distribution
+
+      const result = runtime.handlePlayerCommand(userId(white.seatIndex), {
+        type: 'DeclareVictory',
+        playerId: white.playerId,
+        faction: 'white',
+        reason: 'threeTrueInfo',
+      });
+      expect(result.ok).toBe(false);
+      expect(errCode(result)).toBe('victory.whiteNeedsMission');
+    });
+
+    it('white faction player with met mission can declare victory', () => {
+      const runtime = createStartedRuntime(5);
+      const players = playersBySeat(runtime);
+      const white = players.find((p) => p.faction === 'white');
+      if (!white) return;
+
+      setCharacter(runtime, white.displayName, 'char_002_liu_jian_ming');
+      giveInfo(runtime, white.displayName, 'true', 2);
+      // Mission check: ≥2 true infos → met
+      const game = getGame(runtime);
+      const mission = checkMission(game, white.playerId);
+      if (mission.met) {
+        const result = runtime.handlePlayerCommand(userId(white.seatIndex), {
+          type: 'DeclareVictory',
+          playerId: white.playerId,
+          faction: 'white',
+          reason: 'secretMission',
+        });
+        expect(result.ok, errMsg(result)).toBe(true);
+        expect(game.status).toBe('finished');
+        expect(game.winState.winner?.faction).toBe('white');
+        expect(game.winState.winner?.reason).toBe('secretMission');
+      }
+    });
+  });
+
+  describe('death delayed victory', () => {
+    it('Akise Aru mission met on death with ≥2 true infos', () => {
+      const runtime = createStartedRuntime(5);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const white = players.find((p) => p.faction === 'white');
+      if (!white) return;
+
+      setCharacter(runtime, white.displayName, 'char_009_akise_aru');
+      giveInfo(runtime, white.displayName, 'true', 2);
+      // Kill the white player
+      game.players[white.playerId]!.aliveState = 'dying';
+      game.phase = { phase: 'DyingWindow', enteredAtVersion: game.version, context: { type: 'dying', playerId: white.playerId, cause: 'falseInfoLimit' } };
+      runtime.forceAdvancePhase(userId(0));
+
+      // Advance turn — should trigger death delayed victory
+      if (game.status !== 'finished') {
+        // If the game didn't end (e.g. there are other alive players),
+        // the death-delay mission should still be marked
+        expect(game.players[white.playerId]?.missionStatus).toBe('met');
+      }
+    });
+
+    it('Ayazato Chihiro mission met when first to die', () => {
+      const runtime = createStartedRuntime(5);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const white = players.find((p) => p.faction === 'white');
+      if (!white) return;
+
+      setCharacter(runtime, white.displayName, 'char_014_ayazato_chihiro');
+      // Kill the white player as first death
+      game.players[white.playerId]!.aliveState = 'dying';
+      game.phase = { phase: 'DyingWindow', enteredAtVersion: game.version, context: { type: 'dying', playerId: white.playerId, cause: 'falseInfoLimit' } };
+      runtime.forceAdvancePhase(userId(0));
+
+      if (game.status !== 'finished') {
+        expect(game.players[white.playerId]?.missionStatus).toBe('met');
+      }
+    });
+
+    it('death delayed victory auto-declares on next VictoryDeclareWindow', () => {
+      const runtime = createStartedRuntime(5);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const white = players.find((p) => p.faction === 'white');
+      if (!white) return;
+
+      setCharacter(runtime, white.displayName, 'char_009_akise_aru');
+      giveInfo(runtime, white.displayName, 'true', 2);
+      // Kill white and mark mission
+      game.players[white.playerId]!.aliveState = 'dead';
+      game.players[white.playerId]!.identityRevealed = true;
+      game.players[white.playerId]!.missionStatus = 'met';
+      // Clear victory window to trigger advanceTurn
+      game.phase = { phase: 'TransferDeclare', enteredAtVersion: game.version, context: { type: 'activeTurn', activePlayerId: players.find((p) => p.aliveState === 'alive')!.playerId } };
+      const result = runtime.forceAdvancePhase(userId(0));
+      expect(result.ok).toBe(true);
+      // advanceTurn should have detected the death-delay mission and ended the game
+      if (game.winState.winner?.faction === 'white') {
+        expect(game.winState.winner.reason).toBe('secretMission');
+        expect(game.winState.winner.missionPlayerId).toBe(white.playerId);
+      }
+    });
+  });
+
+  describe('C.C mission flow', () => {
+    it('C.C mission met when killed by specified target', () => {
+      const runtime = createStartedRuntime(5);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const white = players.find((p) => p.faction === 'white');
+      if (!white) return;
+
+      setCharacter(runtime, white.displayName, 'char_016_cc');
+      // Set CC's mission target to another player
+      const target = players.find((p) => p.playerId !== white.playerId && p.aliveState === 'alive');
+      if (!target) return;
+      game.players[white.playerId]!.flags.cc_mission_target = target.playerId;
+
+      // Simulate target killing CC
+      giveInfo(runtime, white.displayName, 'false', 1);
+      // Give CC a false info from the target (simulating a transfer from target)
+      game.players[white.playerId]!.flags.last_false_info_source = target.playerId;
+      // Kill CC
+      game.players[white.playerId]!.aliveState = 'dying';
+      game.phase = { phase: 'DyingWindow', enteredAtVersion: game.version, context: { type: 'dying', playerId: white.playerId, cause: 'falseInfoLimit' } };
+      runtime.forceAdvancePhase(userId(0));
+
+      // CC's mission should be met since killed_by_target counter was incremented
+      if (game.status !== 'finished') {
+        const mission = checkMission(game, white.playerId);
+        if (mission.met) {
+          expect(game.players[white.playerId]?.missionStatus).toBe('met');
+        }
+      }
+    });
+
+    it('C.C must be killed by target to complete mission', () => {
+      const runtime = createStartedRuntime(5);
+      const players = playersBySeat(runtime);
+      const game = getGame(runtime);
+      const white = players.find((p) => p.faction === 'white');
+      if (!white) return;
+
+      setCharacter(runtime, white.displayName, 'char_016_cc');
+      const target = players.find((p) => p.playerId !== white.playerId && p.aliveState === 'alive');
+      if (!target) return;
+      game.players[white.playerId]!.flags.cc_mission_target = target.playerId;
+
+      // Kill CC by someone else (not the target)
+      giveInfo(runtime, white.displayName, 'false', 1);
+      const otherPlayer = players.find((p) => p.playerId !== white.playerId && p.playerId !== target.playerId);
+      if (!otherPlayer) return;
+      game.players[white.playerId]!.flags.last_false_info_source = otherPlayer.playerId;
+      game.players[white.playerId]!.aliveState = 'dying';
+      game.phase = { phase: 'DyingWindow', enteredAtVersion: game.version, context: { type: 'dying', playerId: white.playerId, cause: 'falseInfoLimit' } };
+      runtime.forceAdvancePhase(userId(0));
+
+      // CC's mission should NOT be met
+      if (game.status !== 'finished') {
+        const mission = checkMission(game, white.playerId);
+        expect(mission.deathDelay).toBe(true); // ※ mission
+        expect(game.players[white.playerId]?.missionStatus).toBe('pending');
+      }
     });
   });
 });

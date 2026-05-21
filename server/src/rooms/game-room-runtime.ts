@@ -734,9 +734,46 @@ export class GameRoomRuntime {
       this.addLog(game, 'mission.deathDelayMet.public', { player: player.displayName });
       this.addPrivateLog(game, playerId, 'mission.deathDelayMet.private', { player: player.displayName, reason: checkMission(game, playerId).reason });
     }
+    // 死亡后重新检查最终 PK 是否被破坏（如白方也被杀死）
+    const pkEnded = this.checkFinalPkAfterDeath(game);
+    if (pkEnded) return pkEnded;
+
     const nextDying = this.firstDyingCandidate(game);
     if (nextDying) return this.startDying(game, nextDying, 'falseInfoLimit');
     return this.advanceTurn(game);
+  }
+
+  /**
+   * 死亡链结算后检查最终 PK 状态。
+   * 如果 PK 中只剩下一个阵营存活，则立即结束 PK。
+   */
+  private checkFinalPkAfterDeath(game: GameState): GameState | undefined {
+    if (!game.finalPk) return undefined;
+    const alive = Object.values(game.players).filter((p) => p.aliveState === 'alive');
+    const whiteAlive = alive.find((p) => p.playerId === game.finalPk?.whitePlayerId);
+    const opponentAlive = alive.find((p) => p.playerId === game.finalPk?.opponentPlayerId);
+    // 如果白方或对手已死，PK 自动结束（活着的阵营获胜）
+    if (!whiteAlive && opponentAlive) {
+      const opp = game.players[opponentAlive.playerId];
+      if (!opp) return undefined;
+      game.winState = { finished: true, winner: { faction: opp.faction, declaredByPlayerId: opp.playerId, reason: 'clearField' } };
+      game.status = 'finished';
+      this.room.status = 'finished';
+      this.appendEvent(game, { type: 'GameFinished', faction: opp.faction });
+      this.addLog(game, 'finalPk.endedByDeath', { player: opp.displayName, faction: opp.faction });
+      return this.enterPhase(game, 'GameOver', { type: 'victory', candidates: [opp.playerId] });
+    }
+    if (!opponentAlive && whiteAlive) {
+      const whiteP = game.players[whiteAlive.playerId];
+      if (!whiteP) return undefined;
+      game.winState = { finished: true, winner: { faction: 'white', declaredByPlayerId: whiteP.playerId, reason: 'secretMission', missionPlayerId: whiteP.playerId } };
+      game.status = 'finished';
+      this.room.status = 'finished';
+      this.appendEvent(game, { type: 'GameFinished', faction: 'white' });
+      this.addLog(game, 'finalPk.whiteWinByOpponentDeath', { player: whiteP.displayName });
+      return this.enterPhase(game, 'GameOver', { type: 'victory', candidates: [whiteP.playerId] });
+    }
+    return undefined;
   }
 
   private useMieJi(game: GameState, player: Player, targetPlayerId?: PlayerId): DomainResult<GameState> {

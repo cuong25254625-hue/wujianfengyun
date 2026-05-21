@@ -157,12 +157,12 @@ function checkAyazatoChihiro(player: Player, game: GameState): MissionResult {
 // 016 C.C：※被指定目标杀死（延迟宣胜）
 function checkCC(player: Player, game: GameState): MissionResult {
   const targetId = player.flags.cc_mission_target as PlayerId | undefined;
-  if (!targetId) return { met: false, reason: '尚未指定目标。' };
+  if (!targetId) return { met: false, reason: '尚未指定目标。', deathDelay: true };
   const killedByTarget = getCounter(player, 'killed_by_target');
   if (killedByTarget >= 1) return { met: true, reason: '你已被指定目标杀死。', deathDelay: true };
   // 还没被目标杀死
-  if (player.aliveState === 'dead') return { met: false, reason: '已死亡但并非被指定目标所杀。' };
-  return { met: false, reason: '需被指定目标杀死。' };
+  if (player.aliveState === 'dead') return { met: false, reason: '已死亡但并非被指定目标所杀。', deathDelay: true };
+  return { met: false, reason: '需被指定目标杀死。', deathDelay: true };
 }
 
 // 017 绫波丽：克隆已使用 + (有人因此死亡 或 所有存活 ≥2 情报)

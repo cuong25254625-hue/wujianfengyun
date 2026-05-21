@@ -52,7 +52,9 @@ const template = (text: string, params: LogParams): string =>
 
 const logTemplates: Record<string, string> = {
   'game.started': '游戏开始，{playerCount} 名玩家入局。',
+  'game.characterSelectionStarted': '进入私密选角阶段，每人可查 {optionsPerPlayer} 个角色选项。',
   'game.mvpCharactersAssigned': '系统已分配 {characterCount} 名基础人物。',
+  'game.allDead': '所有玩家均已死亡，游戏结束。',
   'action.passed': '{player} 在{window}选择跳过。',
   'victory.declared': '{player} 宣告{faction}胜利，原因：{reason}。',
   'probe.used': '{player} 试探了 {target}。',
@@ -89,6 +91,19 @@ const logTemplates: Record<string, string> = {
   'character.zhenXiang': '{player} 因真相获得一次额外试探。',
   'character.keLong': '{player} 发动克隆，同步 {target} 的情报数量。',
   'mission.completed': '机密任务条件确认：{reason}。',
+  'mission.deathDelayMet.public': '{player} 机密任务※条件满足，死亡后可在后续宣胜窗口宣告。',
+  'mission.deathDelayMet.private': '{player} 的机密任务（※）已确认：{reason}',
+  'finalPk.started': '场上仅剩 {white}（白方）和 {opponent}，进入最终 PK！',
+  'finalPk.burnUsed': '最终 PK：{player} 烧毁 {target} 面前 {count} 张情报。',
+  'finalPk.whiteWinByTransfers': '最终 PK：{player} 因累计传递超过 {count} 张无人胜利，白方获胜！',
+  'finalPk.whiteWinByOpponentDeath': '最终 PK：对手死亡，{player}（白方）获胜。',
+  'finalPk.endedByDeath': '最终 PK：{player}（{faction}）因白方死亡而获胜。',
+  'character.selectionReady': '{player} 已选好角色。',
+  'setup.choiceSubmitted': '{player} 已提交{choice}选项。',
+  'mission.ccTargetSelected': '你已指定 {target} 为机密任务目标。',
+  'bot.characterSelected': '{player} 自动选择角色。',
+  'bot.setupChoiceSubmitted': '{player} 自动提交开局选项。',
+  'setup.ccTargetRequired': '{player} 需要开局指定一名其他玩家作为机密任务目标。',
   'bot.autoPass': '{player} 自动选择不响应。',
   'gm.forceAdvance': 'GM 强制推进当前阶段。',
   'gm.forceEnd': 'GM 强制结束了当前对局。',
@@ -105,6 +120,11 @@ const importantKeys = new Set([
   'character.jiuJiReturn',
   'character.bengHuai',
   'mission.completed',
+  'mission.deathDelayMet.public',
+  'finalPk.started',
+  'finalPk.whiteWinByTransfers',
+  'finalPk.whiteWinByOpponentDeath',
+  'finalPk.endedByDeath',
 ]);
 
 function formatPublicLog(entry: PublicLogEntry): string {
